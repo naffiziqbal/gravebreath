@@ -104,6 +104,7 @@ export class Game {
   private listener: ListenerState | null = null;
   private listenerRng: Rng;
   private shriekCooldown = 0;
+  private growlTimer = 3;
   private dragTimer = 0;
   private lunge = 0; // seconds since the Listener caught you
   private listenerDeaf = false;
@@ -354,7 +355,7 @@ export class Game {
     this.ended = true;
     this.phase = 'over';
     this.fadeTarget = 1;
-    this.sound.play(fate === 'escaped' ? 'ghost_swell' : fate === 'taken' ? 'listener_shriek' : 'gasp', 0.9);
+    if (!(fate === 'taken' && layer === 3)) this.sound.play(fate === 'escaped' ? 'ghost_swell' : fate === 'taken' ? 'listener_shriek' : 'gasp', 0.9); // the Listener's scream is already playing
     const abandoned = this.crypt.interactables.filter((i) => i.def.type === 'survivor' && !i.done && !(i.def as { trap: boolean }).trap);
     const victim = victimName(this.run.seed);
     const meta = recordRun(this.meta, { name: victim, year: 1880 + this.meta.victims.length * 3, fate, layer, saved: this.saved, ending },
@@ -635,17 +636,32 @@ export class Game {
 
     const d = Math.hypot(this.pos.x - r.state.x, this.pos.z - r.state.z);
     const near = Math.max(0, 1 - d / 11);
+    const heard = Math.max(0, 1 - d / 17); // its body carries further through the tunnels than its breath
+    const hunting = r.state.mode === 'hunt';
     this.sound.setLoop('listener_breath_loop', Math.pow(near, 1.4) * 0.9, dt, 3);
+    this.sound.setRate('listener_breath_loop', hunting ? 1.35 : 1);
+    // every footfall: a heavy stomp on the bones, the recorded step under it, sometimes a drag
     this.dragTimer -= dt;
-    if (moving && this.dragTimer <= 0 && near > 0.05) {
-      this.dragTimer = r.state.mode === 'hunt' ? 0.5 : 0.85;
-      this.sound.playVariant('listener_step', near * 0.9);
-      if (Math.random() < 0.3) this.sound.play('listener_drag', near * 0.5);
+    if (moving && this.dragTimer <= 0 && heard > 0.02) {
+      this.dragTimer = hunting ? 0.42 : 0.85;
+      const v = Math.pow(heard, 1.3);
+      this.sound.playVariant('listener_stomp', v);
+      this.sound.playVariant('listener_step', v * 0.6);
+      if (Math.random() < 0.3) this.sound.play('listener_drag', v * 0.6);
+      if (near > 0.5) this.events.haptic('light'); // close enough to feel it through the floor
+    }
+    // its voice: growls while it prowls, ragged screeches while it hunts you
+    this.growlTimer -= dt;
+    if (this.growlTimer <= 0 && heard > 0.05 && this.lunge === 0) {
+      this.growlTimer = hunting ? 1.6 + Math.random() * 1.6 : 4 + Math.random() * 5;
+      if (hunting && Math.random() < 0.45) this.sound.play('listener_screech', Math.max(0.35, heard));
+      else this.sound.playVariant('listener_growl', Math.pow(heard, 1.1) * 0.95);
     }
     this.shriekCooldown -= dt;
     if (r.startedHunting && this.shriekCooldown <= 0) {
       this.shriekCooldown = 10;
-      this.sound.play('listener_shriek', Math.max(0.5, near));
+      this.growlTimer = 1.5;
+      this.sound.play('listener_screech', Math.max(0.6, heard));
       this.run = scare(this.run, 0.5);
       this.events.haptic('heavy');
       this.events.say('It heard you.');
@@ -655,7 +671,9 @@ export class Game {
     if (r.caught && this.lunge === 0) {
       // it lunges into your face before the screen cuts
       this.lunge = 0.0001;
-      this.sound.play('listener_shriek', 1);
+      this.sound.play('listener_scream', 1);
+      this.sound.playVariant('listener_stomp', 1);
+      this.sound.play('thud', 0.8);
       this.events.haptic('heavy');
     }
     if (this.lunge > 0) {

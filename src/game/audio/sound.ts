@@ -66,7 +66,7 @@ export class Sound {
   private lastVariant = new Map<string, number>();
 
   /** Play one of the numbered variants `${prefix}_0`, `${prefix}_1`, …, never the same one twice running. */
-  playVariant(prefix: 'step_stone' | 'step_dirt' | 'dig' | 'lid_creak' | 'listener_step' | 'water_step', volume = 1) {
+  playVariant(prefix: 'step_stone' | 'step_dirt' | 'dig' | 'lid_creak' | 'listener_step' | 'listener_stomp' | 'listener_growl' | 'water_step', volume = 1) {
     const options = (Object.keys(SOUNDS) as SoundName[]).filter((n) => n.startsWith(`${prefix}_`) && /_\d+$/.test(n));
     if (!options.length) return;
     let i = Math.floor(Math.random() * options.length);

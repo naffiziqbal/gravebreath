@@ -5,9 +5,10 @@ import type { Game } from '../game/Game';
 import { useGame } from '../game/store';
 import { blood, bone, fonts } from '../theme';
 import { ActionPad } from './ActionPad';
+import type { KEYS } from './useDesktopControls';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-export function Hud({ game }: { game: RefObject<Game | null> }) {
+export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeof KEYS }) {
   const hud = useGame((s) => s.hud);
   const subtitle = useGame((s) => s.subtitle);
   const g = () => game.current;
@@ -44,7 +45,7 @@ export function Hud({ game }: { game: RefObject<Game | null> }) {
       )}
 
       <ActionPad
-        action={hud.action} holdAction={hud.holdAction} progress={hud.progress}
+        action={hud.action} holdAction={hud.holdAction} progress={hud.progress} keys={keys}
         matches={hud.matches} matchLit={hud.matchLit} battery={hud.battery} phoneOn={hud.phoneOn}
         onAction={(down) => g()?.setInput({ interact: down })}
         onMatch={() => g()?.lightMatch()}

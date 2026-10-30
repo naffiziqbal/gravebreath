@@ -2,13 +2,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { GLView } from 'expo-gl';
 import * as Haptics from 'expo-haptics';
-import { Platform, StyleSheet, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
+import { Platform, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import { Game, type DebugStart } from '../game/Game';
 import type { GL } from '../game/engine/assets';
 import { useGame } from '../game/store';
 import { Hud } from './Hud';
 import { AUTOPILOT, runAutopilot } from '../game/dev/autopilot';
 import { runDirector } from '../game/dev/director';
+import { KEYS, useDesktopControls } from './useDesktopControls';
+import { ash, bone, fonts } from '../theme';
 
 type Stick = { id: string; ox: number; oy: number; x: number; y: number };
 const STICK_RADIUS = 60;
@@ -22,6 +24,9 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
 
   useEffect(() => () => { game.current?.dispose(); game.current = null; }, []);
   useEffect(() => { game.current?.setPaused(paused); }, [paused]);
+  const { desktop, locked } = useDesktopControls(game, paused);
+  const loading = useGame((s) => s.hud.phase === 'loading');
+  const ended = useGame((s) => !!s.end);
   const chosen = useGame((s) => s.chosen);
   useEffect(() => { if (chosen) game.current?.chooseEnding(chosen); }, [chosen]);
 
@@ -110,7 +115,15 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
           </>
         )}
       </View>
-      <Hud game={game} />
+      <Hud game={game} keys={desktop ? KEYS : undefined} />
+      {desktop && !locked && !paused && !loading && !ended && (
+        <View style={styles.clickToLook} pointerEvents="none">
+          <Text style={styles.clickTitle}>Click to look around</Text>
+          <Text style={styles.clickKeys}>
+            W A S D  move  ·  Shift  run  ·  Mouse  look{'\n'}E / Space / Left click  push, dig, take, read  ·  F  match  ·  R  phone light{'\n'}Q / Right click  hold breath  ·  C  calm down  ·  Esc  free the mouse
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -123,5 +136,8 @@ function clampLen(x: number, y: number): [number, number] {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   stickBase: { position: 'absolute', width: STICK_RADIUS * 2, height: STICK_RADIUS * 2, borderRadius: STICK_RADIUS, borderWidth: 1.5, borderColor: 'rgba(220,210,200,0.18)' },
+  clickToLook: { position: 'absolute', left: 0, right: 0, top: '38%', alignItems: 'center' },
+  clickTitle: { fontFamily: fonts.creepster, fontSize: 30, color: bone, textShadowColor: '#000', textShadowRadius: 8 },
+  clickKeys: { marginTop: 10, color: ash, fontSize: 13, lineHeight: 22, textAlign: 'center', letterSpacing: 0.5, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   stickKnob: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(220,210,200,0.16)' },
 });

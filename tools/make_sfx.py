@@ -207,6 +207,55 @@ def necropolis():
     c = creak(0.7) * 0.6 + bp(noise(secs(0.7)), 2500, 6000) * env_exp(secs(0.7), 0.05) * 0.2
     write("lantern_creak", room(c, 1.0, 0.25, 0.2), 0.45)
 
+def voice(dur, f0, glide, formants, jitter=0.02, voices=3, rasp=0.5, fry=0.0, seed=0):
+    """A throat, not a synth: jittery glottal pulses from several detuned voices through vowel formants, with breath noise."""
+    r = np.random.default_rng(seed)
+    n = secs(dur); tt = np.arange(n) / SR
+    out = np.zeros(n)
+    for v in range(voices):
+        wob = 1 + jitter * lp(r.normal(0, 1, n), 18) * 6 + 0.015 * np.sin(2 * np.pi * (5.5 + v) * tt)  # unsteady pitch
+        f = glide(tt / dur) * f0 * (1 + 0.012 * (v - voices // 2)) * wob
+        ph = np.cumsum(f) / SR
+        src = 2 * (ph % 1) - 1  # sawtooth: every harmonic, like vocal folds
+        src = lp(src, 5000)
+        if fry: src *= 1 + fry * np.sign(np.sin(2 * np.pi * 31 * tt + v))  # vocal fry: the voice breaking into pulses
+        out += src / voices
+    breath = bp(r.normal(0, 1, n), 900, 6000) * (0.6 + 0.4 * np.abs(out))
+    x = out + breath * rasp
+    y = np.zeros(n)
+    for fc, bw, g in formants:
+        y += bp(x, fc - bw / 2, fc + bw / 2) * g
+    return np.tanh(y * 3) / np.tanh(3)  # strained, the throat clipping
+
+def listener():
+    """The Listener's voice and body: a catch scream, a screech when it hears you, growls, heavy steps."""
+    # the catch: a long rising scream that tears apart, several throats at once, with a low roar under it
+    rise = lambda u: np.interp(u, [0, 0.15, 0.55, 0.8, 1], [0.7, 1.15, 1.3, 1.1, 0.75])
+    sc = voice(2.6, 420, rise, [(900, 400, 1.0), (1400, 500, 0.8), (3000, 900, 0.5)], jitter=0.05, voices=4, rasp=0.9, seed=21)
+    roar = voice(2.6, 95, lambda u: 1 - 0.25 * u, [(450, 300, 1.0), (850, 300, 0.6)], jitter=0.08, voices=3, rasp=0.6, fry=0.6, seed=22)
+    n = len(sc); env = np.minimum(1, np.arange(n) / secs(0.04)) * np.exp(-np.maximum(0, np.arange(n) / SR - 1.7) / 0.35)
+    write("listener_scream", room((sc + roar * 0.7) * env, 2.2, 0.6, 0.4), 0.95)
+    # it heard you: a short, sharp intake and screech
+    sh = voice(1.0, 560, lambda u: np.interp(u, [0, 0.2, 1], [0.8, 1.25, 0.9]), [(1100, 500, 1.0), (2600, 800, 0.6)], jitter=0.06, voices=3, rasp=1.0, seed=23)
+    n = len(sh); env = np.minimum(1, np.arange(n) / secs(0.03)) * np.exp(-np.maximum(0, np.arange(n) / SR - 0.45) / 0.18)
+    write("listener_screech", room(sh * env, 1.6, 0.5, 0.4), 0.9)
+    # growls while it prowls: low, wet, breaking into fry
+    for k in range(3):
+        d = 1.3 + 0.3 * k
+        g = voice(d, 72 + 14 * k, lambda u: 1 + 0.15 * np.sin(np.pi * u), [(420, 260, 1.0), (780, 300, 0.7), (2300, 600, 0.15)], jitter=0.1, voices=2, rasp=0.5, fry=0.8, seed=30 + k)
+        n = len(g); env = np.sin(np.linspace(0, np.pi, n)) ** 0.8
+        write(f"listener_growl_{k}", room(g * env, 1.5, 0.45, 0.35), 0.8)
+    # steps: a heavy body landing on bone, knuckles clicking, a short scrape
+    for k in range(4):
+        m = secs(0.6); x = np.zeros(m)
+        x += lp(noise(m), 140 + 30 * k, 4) * env_exp(m, 0.05) * 3  # the weight
+        for _ in range(3 + k):  # joints and bones clicking under it
+            i = rng.integers(secs(0.01), secs(0.18)); c = hp(noise(400), 1800) * env_exp(400, 0.004)
+            x[i:i + 400] += c * rng.uniform(0.3, 0.7)
+        i = secs(0.08); sc2 = bp(noise(secs(0.3)), 400, 2500) * np.sin(np.linspace(0, np.pi, secs(0.3))) * 0.25
+        x[i:i + len(sc2)] += sc2[: m - i]
+        write(f"listener_stomp_{k}", room(x, 0.9, 0.25, 0.3), 0.85)
+
 def surface():
     """Rain on the graveyard, far thunder, and the church bell of Vael."""
     n = secs(10.4)
@@ -229,4 +278,5 @@ if __name__ == "__main__":
     import sys
     if "--necropolis" in sys.argv: necropolis()
     elif "--surface" in sys.argv: surface()
-    else: main(); necropolis(); surface()
+    elif "--listener" in sys.argv: listener()
+    else: main(); necropolis(); surface(); listener()
