@@ -164,7 +164,11 @@ export async function buildCoffin(assets: Assets, decals: { scratches: number; c
   scene.add(lining);
 
   // decals are lit like the wood under them, so the warning only shows when you have light
-  const scratchMat = new THREE.MeshStandardMaterial({ map: await assets.texture(decals.scratches, true), transparent: true, depthWrite: false, roughness: 0.9 });
+  // textures load with flipY off (right for glTF models); turn this flat decal the right way up so the words read
+  const scratchTex = (await assets.texture(decals.scratches, true)).clone();
+  scratchTex.repeat.set(1, -1);
+  scratchTex.offset.set(0, 1);
+  const scratchMat = new THREE.MeshStandardMaterial({ map: scratchTex, transparent: true, depthWrite: false, roughness: 0.9 });
   const scratches = plane(W * 0.9, W * 1.8, scratchMat);
   scratches.position.set(0, -0.12, LID + 0.002);
   scratches.name = 'scratches';

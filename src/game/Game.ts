@@ -12,7 +12,7 @@ import { animateHushman } from './world/hushmanRig';
 import { Hands, type PickupKind } from './world/hands';
 import { animateListener } from './world/listenerRig';
 import { generateLayout, type Layout } from './sim/layout';
-import { generateCatacombs, neighbours } from './sim/catacombs';
+import { cellOf, generateCatacombs, neighbours, sightCells, type Cell } from './sim/catacombs';
 import { generateNecropolis, HALL_DEPTH } from './sim/necropolis';
 import { generateSurface } from './sim/surface';
 import { endingChoices, type Ending } from './sim/endings';
@@ -22,7 +22,7 @@ import { createRng, type Rng } from './sim/rng';
 import { airFraction, newRun, scare, step, strikeMatch, togglePhone, type Movement, type RunState } from './sim/run';
 import { recordRun, unlocks, victimName, type Meta } from './sim/meta';
 import { CLUES, type Clue } from './data/clues';
-import { DIG, PLAYER } from './config';
+import { DIG, PLAYER, RENDER } from './config';
 import type { Hud, RunEnd } from './store';
 
 export type GameEvents = {
@@ -109,8 +109,11 @@ export class Game {
   private lunge = 0; // seconds since the Listener caught you
   private listenerDeaf = false;
   private hushmenBlind = false; // dev only, like listenerDeaf // dev only: the gameplay recorder holds it aside between staged moments
-  private fpsAt = 0;
+  private fpsAt = 0; // wall-clock frame rate over a window, for dynamic resolution and the dev readout
   private fpsFrames = 0;
+  private fpsHitch = false;
+  private sightFrom: Cell | undefined; // the cell the bone culling was last worked out from
+  private sight: Set<Cell> | null = null;
   private fpsShown = 0;
   private soil: { p: THREE.Vector3; v: THREE.Vector3; r: THREE.Euler; spin: THREE.Vector3; s: number; landed: boolean }[] = [];
   private soilSpawn = 0;
@@ -194,9 +197,10 @@ export class Game {
       if (this.ended && this.fade >= 0.999) return;
       this.frame = requestAnimationFrame(loop);
       const now = Date.now();
-      const dt = Math.min(0.05, (now - this.last) / 1000);
+      const real = (now - this.last) / 1000;
+      const dt = Math.min(0.05, real);
       this.last = now;
-      if (!this.paused) this.tick(dt);
+      if (!this.paused) { this.tick(dt); this.measure(now, real); }
     };
     this.frame = requestAnimationFrame(loop);
   }
@@ -391,6 +395,7 @@ export class Game {
     if (this.phase === 'catacombs') this.updateListener(dt);
     if (this.phase === 'necropolis' || this.phase === 'surface') this.updateHushmen(dt);
     if (this.phase === 'surface') this.updateSurface(dt);
+    if (this.phase === 'catacombs') this.cullBones();
     this.updateLights(dt);
     this.updateAudio(dt, inPocket, pushing || !!digging);
 
@@ -420,12 +425,45 @@ export class Game {
     this.renderer.render(this.scene, this.camera, { air: airFraction(this.run), panic: this.run.panic, pulse, fade: this.fade, flash: this.flash, shake: this.shake }, this.time,
       this.alive ? this.hands : undefined);
 
-    if (__DEV__) {
-      this.fpsFrames++;
-      if (this.time - this.fpsAt > 2) { this.fpsShown = Math.round(this.fpsFrames / (this.time - this.fpsAt)); this.fpsAt = this.time; this.fpsFrames = 0; }
-    }
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) { this.hudTimer = 0.1; this.pushHud(); }
+  }
+
+  /**
+   * Dynamic resolution, from the real (wall-clock) frame rate: below the target the internal render shrinks a
+   * step, with lots of headroom it grows back. Windows with a hitch (a shader compile, a level loading) don't count.
+   */
+  private measure(now: number, real: number) {
+    if (!this.fpsAt) this.fpsAt = now;
+    this.fpsFrames++;
+    if (real > 0.25) this.fpsHitch = true;
+    const span = (now - this.fpsAt) / 1000;
+    if (span < 1.5) return;
+    const fps = this.fpsFrames / span;
+    this.fpsShown = Math.round(fps);
+    if (!this.fpsHitch && (this.walking || this.phase === 'coffin')) {
+      const r = this.renderer;
+      if (fps < RENDER.targetFps - 2) r.setScale(r.scale * Math.max(0.8, fps / RENDER.targetFps));
+      else if (fps > 52) r.setScale(r.scale * 1.06);
+    }
+    this.fpsAt = now; this.fpsFrames = 0; this.fpsHitch = false;
+  }
+
+  /**
+   * Bones are only drawn in cells you could see down open tunnels, and not where the fog has swallowed them
+   * (density 0.3: nothing shows past ~7.5 m). Walls hide the rest of the maze.
+   */
+  private cullBones() {
+    const c = this.catacombs;
+    if (!c) return;
+    const here = cellOf(c.layout.maze, this.pos.x, this.pos.z);
+    if (here !== this.sightFrom) { this.sightFrom = here; this.sight = here ? sightCells(c.layout.maze, here) : null; }
+    const cam = this.camera.position;
+    for (const b of c.bones) {
+      const cell = b.userData.cell as Cell | undefined;
+      const s = b.boundingSphere!;
+      b.visible = (!cell || !this.sight || this.sight.has(cell)) && s.center.distanceTo(cam) - s.radius < 8;
+    }
   }
 
   private updateLook() {

@@ -3,11 +3,12 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Assets } from '../engine/assets';
 import { materialFrom } from '../engine/renderer';
-import { CELL, DIRS, TUNNEL, TUNNEL_HEIGHT, cellCentre, type CatacombLayout, type Cell, type Dir } from '../sim/catacombs';
+import { CELL, DIRS, TUNNEL, TUNNEL_HEIGHT, cellCentre, cellOf, type CatacombLayout, type Cell, type Dir } from '../sim/catacombs';
 import { buildListenerRig, type ListenerRig } from './listenerRig';
 import { buildInteractable, darkScene, fitFootprint, moundGeometry, plane, type Area, type Box, type Level, type LitPoint, type LiveInteractable } from './builder';
 
-export type Catacombs = Level & { layout: CatacombLayout; listener: THREE.Group; listenerRig: ListenerRig };
+/** `bones` are the instanced bone and skull batches, one per maze cell, hidden by Game when fog hides them. */
+export type Catacombs = Level & { layout: CatacombLayout; listener: THREE.Group; listenerRig: ListenerRig; bones: THREE.InstancedMesh[] };
 
 const BONE = new THREE.Color(0.82, 0.74, 0.58);
 const SOCKET = new THREE.Color(0.04, 0.025, 0.02);
@@ -164,17 +165,19 @@ export async function buildCatacombs(assets: Assets, layout: CatacombLayout): Pr
       if (Math.abs(y - 1.55) < 0.03) y = 1.55;
     }
   }
-  // one instanced batch per kind and per region of the maze, so phones can cull what's behind you
+  // one instanced batch per kind and per maze cell, so phones can cull what's behind you or lost in the fog
+  const batches: THREE.InstancedMesh[] = [];
   const batch = (geo: THREE.BufferGeometry, mats: THREE.Matrix4[]) => {
-    const regions = new Map<string, THREE.Matrix4[]>();
+    const regions = new Map<Cell | undefined, THREE.Matrix4[]>();
     const v = new THREE.Vector3();
     for (const mt of mats) {
       v.setFromMatrixPosition(mt);
-      const key = `${Math.floor(v.x / (CELL * 2))},${Math.floor(v.z / (CELL * 2))}`;
+      const key = cellOf(maze, v.x, v.z); // the nearest cell; Game draws only the cells you could see
       (regions.get(key) ?? regions.set(key, []).get(key)!).push(mt);
     }
-    for (const list of regions.values()) {
+    for (const [cell, list] of regions) {
       const im = new THREE.InstancedMesh(geo, boneMat, list.length);
+      im.userData.cell = cell;
       const tint = new THREE.Color();
       list.forEach((mt, i) => {
         im.setMatrixAt(i, mt);
@@ -183,6 +186,7 @@ export async function buildCatacombs(assets: Assets, layout: CatacombLayout): Pr
       });
       im.computeBoundingSphere();
       scene.add(im);
+      batches.push(im);
     }
   };
   batch(boneGeo, bones);
@@ -276,7 +280,7 @@ export async function buildCatacombs(assets: Assets, layout: CatacombLayout): Pr
     { name: 'The catacombs', landmark: false, contains: () => true },
   ];
   return {
-    layer: 3, scene, colliders, lit, interactables, airPockets, dust, areas, layout, listener, listenerRig,
+    layer: 3, scene, colliders, lit, interactables, airPockets, dust, areas, layout, listener, listenerRig, bones: batches,
     spawn: { pos: new THREE.Vector3(entry.x, 0, entry.z + 0.2), yaw: maze.entrance.open.n ? 0 : maze.entrance.open.e ? -Math.PI / 2 : Math.PI / 2 },
   };
 }

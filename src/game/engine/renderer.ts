@@ -18,7 +18,8 @@ uniform vec2 uRes;
 uniform float uAir, uPanic, uPulse, uFade, uFlash, uTime;
 varying vec2 vUv;
 
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// interleaved gradient noise: stable at the lower float precision many Android GPUs use
+float grainNoise(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 
 void main() {
   float suffocate = clamp(1.0 - uAir / 0.35, 0.0, 1.0);   // 0 until air drops below 35%
@@ -42,12 +43,14 @@ void main() {
   col *= vig;
   col += vec3(0.25, 0.0, 0.0) * uPulse * suffocate * (1.0 - vig) * 0.6;
   col += uFlash;
-  // film grain
-  col += (hash(vUv * uRes + fract(uTime) * 91.7) - 0.5) * 0.045;
   col *= 1.0 - uFade;
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
+  // film grain, added after the brightness curve so the dark doesn't turn to static; faint in pure black
+  float g = grainNoise(gl_FragCoord.xy + floor(fract(uTime * 0.37) * 97.0) * vec2(5.588, 3.111)) - 0.5;
+  float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+  gl_FragColor.rgb += g * 0.035 * (0.25 + 0.75 * smoothstep(0.0, 0.3, lum));
 }
 `;
 
@@ -59,7 +62,8 @@ export class Renderer {
   private post: THREE.ShaderMaterial;
   readonly width: number;
   readonly height: number;
-  readonly scale: number;
+  scale: number;
+  private maxScale: number;
 
   constructor(readonly gl: GL) {
     this.width = gl.drawingBufferWidth;
@@ -81,6 +85,7 @@ export class Renderer {
     const canFloat = !!gl.getExtension('EXT_color_buffer_float');
     // render below screen resolution for speed, but never so low that it turns blocky
     this.scale = Math.min(1, Math.max(RENDER.scale, RENDER.minInternalWidth / this.width));
+    this.maxScale = this.scale;
     this.target = new THREE.WebGLRenderTarget(Math.round(this.width * this.scale), Math.round(this.height * this.scale), {
       type: canFloat ? THREE.HalfFloatType : THREE.UnsignedByteType,
       colorSpace: canFloat ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace,
@@ -116,6 +121,14 @@ export class Renderer {
     this.three.setRenderTarget(null);
     this.three.render(this.postScene, this.postCam);
     this.gl.endFrameEXP?.();
+  }
+
+  /** Dynamic resolution: render smaller when the frame rate drops, back up when there is headroom. */
+  setScale(s: number) {
+    const next = Math.max(RENDER.minScale, Math.min(this.maxScale, s));
+    if (Math.abs(next - this.scale) < 0.01) return;
+    this.scale = next;
+    this.target.setSize(Math.round(this.width * next), Math.round(this.height * next));
   }
 
   dispose() {

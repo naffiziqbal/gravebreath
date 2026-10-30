@@ -57,6 +57,23 @@ export function distances(m: Maze, from: Cell): Map<Cell, number> {
   return dist;
 }
 
+/**
+ * Cells you could possibly see from `from`: everything within two steps through open tunnels, plus straight
+ * runs of corridor further on. Tunnel walls hide the rest, so the renderer skips their bones.
+ */
+export function sightCells(m: Maze, from: Cell, reach = 2, straight = 3): Set<Cell> {
+  const seen = new Set<Cell>();
+  for (const [c, d] of distances(m, from)) if (d <= reach) seen.add(c);
+  for (const d of DIRS) {
+    let c: Cell | undefined = from;
+    for (let k = 0; k < straight && c?.open[d]; k++) {
+      c = cellAt(m, c.cx + STEP[d][0], c.cy + STEP[d][1]);
+      if (c) seen.add(c);
+    }
+  }
+  return seen;
+}
+
 /** The next cell to walk into on a shortest path from `from` to `to` (or `from` itself if already there). */
 export function nextToward(m: Maze, from: Cell, to: Cell): Cell {
   if (from === to) return from;

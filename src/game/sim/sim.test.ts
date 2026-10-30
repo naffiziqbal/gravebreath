@@ -7,7 +7,7 @@ import { generateSurface, LECTERN } from './surface.ts';
 import { endingChoices } from './endings.ts';
 import { emptyMeta, recordRun, unlocks, victimName } from './meta.ts';
 import { AIR, LIGHT } from '../config.ts';
-import { cellCentre, distances, generateCatacombs, neighbours, nextToward } from './catacombs.ts';
+import { cellCentre, distances, generateCatacombs, neighbours, nextToward, sightCells } from './catacombs.ts';
 import { noiseRadius, spawnListener, stepListener } from './listener.ts';
 import { createRng } from './rng.ts';
 
@@ -252,4 +252,14 @@ test('surface is deterministic per seed', () => {
 test('the ending choice needs the final ledger page', () => {
   assert.deepEqual(endingChoices([]), ['rain']);
   assert.deepEqual(endingChoices(['ledger-page-final']), ['bells', 'undertaker']);
+});
+
+test('catacomb sight covers neighbours and straight corridors, and skips walled-off cells', () => {
+  const { maze } = generateCatacombs(10, []);
+  const from = maze.entrance;
+  const sight = sightCells(maze, from);
+  for (const n of neighbours(maze, from)) assert.ok(sight.has(n), 'neighbours are always drawn');
+  const dist = distances(maze, from);
+  for (const c of sight) assert.ok((dist.get(c) ?? Infinity) <= 3, 'only cells reachable through tunnels');
+  assert.ok(sight.size < maze.cells.length, 'some of the maze is culled');
 });

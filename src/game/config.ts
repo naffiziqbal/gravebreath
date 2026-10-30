@@ -54,5 +54,9 @@ export const RENDER = {
   scale: 0.66,
   /** never render narrower than this many pixels, so small GL buffers (some Android phones) stay sharp */
   minInternalWidth: 1280,
+  /** dynamic resolution never drops the internal render below this fraction of the screen */
+  minScale: 0.4,
+  /** dynamic resolution aims to stay above this many frames per second */
+  targetFps: 30,
   fogDensity: 0.22,
 };

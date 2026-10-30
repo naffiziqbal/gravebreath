@@ -7,7 +7,7 @@ const SERVER = 'http://localhost:8765';
 
 export type Recording = { event(kind: string, data?: Record<string, unknown>): void; stop(): Promise<void> };
 
-export async function startRecording(game: Game): Promise<Recording> {
+export async function startRecording(game: Game, opts: { bitrate?: number } = {}): Promise<Recording> {
   const canvas = document.querySelector('canvas');
   if (!canvas) throw new Error('no canvas to record');
   const t0 = performance.now();
@@ -15,7 +15,7 @@ export async function startRecording(game: Game): Promise<Recording> {
   const event = (kind: string, data: Record<string, unknown> = {}) => events.push({ t: (performance.now() - t0) / 1000, kind, data });
 
   const stream = canvas.captureStream(30);
-  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 18_000_000 });
+  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: opts.bitrate ?? 18_000_000 });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.start(1000);
@@ -48,3 +48,6 @@ export async function startRecording(game: Game): Promise<Recording> {
     },
   };
 }
+
+// dev only: lets a console script record staged shots (the trailer) without the director
+if (__DEV__) (globalThis as { __startRecording?: typeof startRecording }).__startRecording = startRecording;

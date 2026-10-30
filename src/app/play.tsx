@@ -22,7 +22,10 @@ export default function Play() {
   const [truthRead, setTruthRead] = useState(false);
   const [storyRead, setStoryRead] = useState(false);
   // dev builds only: /play?layer=3&match=1&yaw=1.5 starts a run inside a layer for testing
-  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string }>();
+  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string; frame?: string }>();
+  // dev only: /play?frame=1080x1920 renders at a fixed pixel size (trailer shots), whatever the window is
+  const frame = __DEV__ && params.frame ? params.frame.split('x').map(Number) : null;
+  const ratio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   const debug = __DEV__ && (params.layer || params.seed || params.autoplay)
     ? {
       layer: params.layer ? Number(params.layer) : undefined, match: params.match === '1', phone: params.phone === '1',
@@ -32,7 +35,7 @@ export default function Play() {
     : undefined;
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, frame && { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: frame[0] / ratio, height: frame[1] / ratio }]}>
       <GameView key={runKey} paused={!!clue || !!choices} debug={debug} />
       {clue && (
         <View style={styles.overlay}>
