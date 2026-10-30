@@ -90,7 +90,7 @@ G = np.stack(np.meshgrid(xs, ys, zs, indexing="ij"), -1).reshape(-1, 3)
 vol = field(G).reshape(len(xs), len(ys), len(zs))
 verts, faces, normals, _ = measure.marching_cubes(vol, 0.0, spacing=(STEP, STEP, STEP))
 verts += lo
-faces = faces[:, ::-1]  # outward winding for three.js
+# marching_cubes already winds triangles counter-clockwise seen from outside (normals point out)
 # cut the wrist end open where the forearm and sleeve take over
 keep_v = verts[:, 2] < 0.03
 remap = -np.ones(len(verts), int); remap[keep_v] = np.arange(keep_v.sum())

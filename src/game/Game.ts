@@ -7,6 +7,7 @@ import { Sound } from './audio/sound';
 import { buildCoffin, buildCrypt, type Box, type Coffin, type Crypt, type Level, type LiveInteractable } from './world/builder';
 import { buildCatacombs, type Catacombs } from './world/catacombs';
 import { Hands, type PickupKind } from './world/hands';
+import { animateListener } from './world/listenerRig';
 import { generateLayout, type Layout } from './sim/layout';
 import { generateCatacombs, neighbours } from './sim/catacombs';
 import { noiseRadius, spawnListener, stepListener, type ListenerState } from './sim/listener';
@@ -87,6 +88,7 @@ export class Game {
   private listenerRng: Rng;
   private shriekCooldown = 0;
   private dragTimer = 0;
+  private lunge = 0; // seconds since the Listener caught you
   private fpsAt = 0;
   private fpsFrames = 0;
   private fpsShown = 0;
@@ -520,14 +522,10 @@ export class Game {
     const vx = r.state.x - before.x, vz = r.state.z - before.z;
     const moving = Math.hypot(vx, vz) > 1e-4;
     g.position.set(r.state.x, 0, r.state.z);
-    if (moving) g.rotation.y = Math.atan2(-vx, -vz); // the model faces -z
-    // a slow, wrong gait; the head twitches when it listens
-    const gait = Math.sin(this.time * (r.state.mode === 'hunt' ? 7 : 4)) * (moving ? 0.45 : 0);
-    g.getObjectByName('legL')!.rotation.x = gait;
-    g.getObjectByName('legR')!.rotation.x = -gait;
-    g.getObjectByName('armL')!.rotation.x = -0.5 - gait * 0.6;
-    g.getObjectByName('armR')!.rotation.x = -0.5 + gait * 0.6;
-    g.position.y = Math.abs(gait) * 0.03;
+    // face where it walks; when it lunges, face you
+    if (this.lunge > 0) g.rotation.y = Math.atan2(-(this.pos.x - r.state.x), -(this.pos.z - r.state.z));
+    else if (moving) g.rotation.y = Math.atan2(-vx, -vz); // the model faces -z
+    animateListener(c.listenerRig, { time: this.time, dt, mode: r.state.mode, moving, lunge: Math.min(1, this.lunge * 3) });
 
     const d = Math.hypot(this.pos.x - r.state.x, this.pos.z - r.state.z);
     const near = Math.max(0, 1 - d / 11);
@@ -548,11 +546,23 @@ export class Game {
       setTimeout(() => this.events.say(null), 2500);
     }
     if (near > 0.75) this.run = { ...this.run, panic: Math.min(1, this.run.panic + dt * 0.15) };
-    if (r.caught) {
-      this.flash = 0.35;
-      this.shake = 1;
+    if (r.caught && this.lunge === 0) {
+      // it lunges into your face before the screen cuts
+      this.lunge = 0.0001;
+      this.sound.play('listener_shriek', 1);
       this.events.haptic('heavy');
-      this.endRun('taken', 3);
+    }
+    if (this.lunge > 0) {
+      this.lunge += dt;
+      const toward = new THREE.Vector3(this.pos.x - g.position.x, 0, this.pos.z - g.position.z);
+      const dist = toward.length();
+      if (dist > 0.55) g.position.addScaledVector(toward.normalize(), Math.min(dist - 0.55, dt * 3));
+      this.shake = Math.max(this.shake, 0.6);
+      if (this.lunge > 0.55) {
+        this.flash = 0.35;
+        this.shake = 1;
+        this.endRun('taken', 3);
+      }
     }
   }
 
@@ -623,7 +633,7 @@ export class Game {
     this.flame.visible = false; // the flame is drawn in the hand now
     this.flame.scale.setScalar(lit ? flick * (0.6 + 0.4 * dying) : 1);
     const low = r.battery < 0.15 && Math.random() < 0.08;
-    this.phone.intensity = r.phoneOn && !low ? (this.phase === 'coffin' ? 3 : 40) * Math.min(1, 0.3 + r.battery * 3) : 0;
+    this.phone.intensity = r.phoneOn && !low ? (this.phase === 'coffin' ? 3 : 26) * Math.min(1, 0.3 + r.battery * 3) : 0;
 
     const level = this.walking ? this.level : null;
     if (!level) { for (const l of this.pool) l.intensity = 0; return; }

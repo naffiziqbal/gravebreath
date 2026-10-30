@@ -10,6 +10,7 @@ import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { MODELS, TEXTURES, type ModelName, type TextureName } from './manifest';
+import type { SkinnedData } from './skinned';
 
 export type GL = WebGL2RenderingContext & { endFrameEXP?: () => void };
 
@@ -37,15 +38,18 @@ export class Assets {
     return { map, normalMap, arm };
   }
 
-  /** The sculpted first-person hand (tools/make_hand.py). */
-  async handData(): Promise<{ buffer: ArrayBuffer; bones: { name: string; parent: number; pos: number[] }[] }> {
-    const asset = Asset.fromModule(require('../../../assets/game/hand/hand.bin'));
+  /** A sculpted, skinned mesh: the first-person hand or the Listener (tools/make_hand.py, tools/make_listener.py). */
+  async skinnedData(which: 'hand' | 'listener'): Promise<SkinnedData> {
+    const files = {
+      hand: { bin: require('../../../assets/game/hand/hand.bin'), json: require('../../../assets/game/hand/hand.json') },
+      listener: { bin: require('../../../assets/game/listener/listener.bin'), json: require('../../../assets/game/listener/listener.json') },
+    }[which];
+    const asset = Asset.fromModule(files.bin);
     await asset.downloadAsync();
     const buffer = Platform.OS === 'web'
       ? await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer()
       : await new File(asset.localUri ?? asset.uri).arrayBuffer();
-    const { bones } = require('../../../assets/game/hand/hand.json') as { bones: { name: string; parent: number; pos: number[] }[] };
-    return { buffer, bones };
+    return { buffer, bones: (files.json as Pick<SkinnedData, 'bones'>).bones };
   }
 
   /** A fresh copy of a model (geometry and materials are shared between copies). */

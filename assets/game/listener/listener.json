@@ -1,0 +1,202 @@
+{
+ "bones": [
+  {
+   "name": "hips",
+   "parent": -1,
+   "pos": [
+    0.0,
+    1.0,
+    0.0
+   ]
+  },
+  {
+   "name": "spine",
+   "parent": 0,
+   "pos": [
+    0.0,
+    1.2,
+    0.01
+   ]
+  },
+  {
+   "name": "chest",
+   "parent": 1,
+   "pos": [
+    0.0,
+    1.44,
+    0.02
+   ]
+  },
+  {
+   "name": "neck",
+   "parent": 2,
+   "pos": [
+    0.0,
+    1.6,
+    0.0
+   ]
+  },
+  {
+   "name": "head",
+   "parent": 3,
+   "pos": [
+    0.0,
+    1.74,
+    -0.035
+   ]
+  },
+  {
+   "name": "jaw",
+   "parent": 4,
+   "pos": [
+    0.0,
+    1.78,
+    -0.055
+   ]
+  },
+  {
+   "name": "shoulderL",
+   "parent": 2,
+   "pos": [
+    0.06,
+    1.56,
+    0.0
+   ]
+  },
+  {
+   "name": "upperArmL",
+   "parent": 6,
+   "pos": [
+    0.2,
+    1.54,
+    0.0
+   ]
+  },
+  {
+   "name": "forearmL",
+   "parent": 7,
+   "pos": [
+    0.245,
+    1.19,
+    0.02
+   ]
+  },
+  {
+   "name": "handL",
+   "parent": 8,
+   "pos": [
+    0.27,
+    0.86,
+    0.0
+   ]
+  },
+  {
+   "name": "fingersL",
+   "parent": 9,
+   "pos": [
+    0.278,
+    0.76,
+    -0.005
+   ]
+  },
+  {
+   "name": "thighL",
+   "parent": 0,
+   "pos": [
+    0.09,
+    0.97,
+    0.0
+   ]
+  },
+  {
+   "name": "shinL",
+   "parent": 11,
+   "pos": [
+    0.1,
+    0.53,
+    -0.02
+   ]
+  },
+  {
+   "name": "footL",
+   "parent": 12,
+   "pos": [
+    0.1,
+    0.08,
+    0.025
+   ]
+  },
+  {
+   "name": "shoulderR",
+   "parent": 2,
+   "pos": [
+    -0.06,
+    1.56,
+    0.0
+   ]
+  },
+  {
+   "name": "upperArmR",
+   "parent": 14,
+   "pos": [
+    -0.2,
+    1.54,
+    0.0
+   ]
+  },
+  {
+   "name": "forearmR",
+   "parent": 15,
+   "pos": [
+    -0.245,
+    1.19,
+    0.02
+   ]
+  },
+  {
+   "name": "handR",
+   "parent": 16,
+   "pos": [
+    -0.27,
+    0.86,
+    0.0
+   ]
+  },
+  {
+   "name": "fingersR",
+   "parent": 17,
+   "pos": [
+    -0.278,
+    0.76,
+    -0.005
+   ]
+  },
+  {
+   "name": "thighR",
+   "parent": 0,
+   "pos": [
+    -0.09,
+    0.97,
+    0.0
+   ]
+  },
+  {
+   "name": "shinR",
+   "parent": 19,
+   "pos": [
+    -0.1,
+    0.53,
+    -0.02
+   ]
+  },
+  {
+   "name": "footR",
+   "parent": 20,
+   "pos": [
+    -0.1,
+    0.08,
+    0.025
+   ]
+  }
+ ]
+}

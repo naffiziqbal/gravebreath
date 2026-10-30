@@ -4,9 +4,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Assets } from '../engine/assets';
 import { materialFrom } from '../engine/renderer';
 import { CELL, DIRS, TUNNEL, TUNNEL_HEIGHT, cellCentre, type CatacombLayout, type Cell, type Dir } from '../sim/catacombs';
+import { buildListenerRig, type ListenerRig } from './listenerRig';
 import { buildInteractable, darkScene, fitFootprint, moundGeometry, plane, type Area, type Box, type Level, type LitPoint, type LiveInteractable } from './builder';
 
-export type Catacombs = Level & { layout: CatacombLayout; listener: THREE.Group };
+export type Catacombs = Level & { layout: CatacombLayout; listener: THREE.Group; listenerRig: ListenerRig };
 
 const BONE = new THREE.Color(0.82, 0.74, 0.58);
 const SOCKET = new THREE.Color(0.04, 0.025, 0.02);
@@ -263,7 +264,8 @@ export async function buildCatacombs(assets: Assets, layout: CatacombLayout): Pr
     interactables.push(await buildInteractable(assets, scene, it, 0, room, { woodMaps: dirt, stoneMaps: stone, wallMaps: stone }, lit, colliders));
   }
 
-  const listener = buildListener(rock);
+  const listenerRig = await buildListenerRig(assets);
+  const listener = listenerRig.group;
   const start = cellCentre(maze, layout.listenerStart);
   listener.position.set(start.x, 0, start.z);
   scene.add(listener);
@@ -274,70 +276,8 @@ export async function buildCatacombs(assets: Assets, layout: CatacombLayout): Pr
     { name: 'The catacombs', landmark: false, contains: () => true },
   ];
   return {
-    layer: 3, scene, colliders, lit, interactables, airPockets, dust, areas, layout, listener,
+    layer: 3, scene, colliders, lit, interactables, airPockets, dust, areas, layout, listener, listenerRig,
     spawn: { pos: new THREE.Vector3(entry.x, 0, entry.z + 0.2), yaw: maze.entrance.open.n ? 0 : maze.entrance.open.e ? -Math.PI / 2 : Math.PI / 2 },
   };
 }
 
-/** The Listener: tall, starved and eyeless, its head tilted to hear. Mostly seen as a pale shape at the edge of the light. */
-function buildListener(maps: Awaited<ReturnType<Assets['materialMaps']>>) {
-  const g = new THREE.Group();
-  const skin = materialFrom(maps, 2.5, 2.5, { tint: 0xc4b6a4, normalScale: 1.2 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x0d0907, roughness: 1 });
-  const limb = (r: number, len: number) => new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 3, 7), skin);
-
-  // torso: a narrow, hunched ribcage with the ribs showing through
-  const ribs = new THREE.CapsuleGeometry(0.12, 0.62, 6, 12);
-  const pos = ribs.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const front = Math.max(0, -z / 0.12); // ribs show on the chest, facing -z
-    const rib = Math.max(0, Math.sin(y * 48)) * 0.012 * front * (y > -0.15 ? 1 : 0.3);
-    const gaunt = y < -0.05 && y > -0.35 ? 0.82 : 1; // a hollow belly
-    pos.setXYZ(i, x * gaunt * 1.15, y, z * gaunt - rib);
-  }
-  ribs.computeVertexNormals();
-  const torso = new THREE.Mesh(ribs, skin);
-  torso.position.set(0, 1.2, -0.06); torso.rotation.x = 0.55;
-  g.add(torso);
-  // spine knobs along the hunched back
-  for (let k = 0; k < 8; k++) {
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), skin);
-    const t = k / 7;
-    knob.position.set(0, 0.92 + t * 0.6, 0.06 + t * 0.26 + Math.sin(t * Math.PI) * 0.05);
-    g.add(knob);
-  }
-  // a long neck reaching forward, the eyeless head cocked to one side, jaw hanging open
-  const neck = limb(0.035, 0.24);
-  neck.position.set(0, 1.62, -0.28); neck.rotation.x = 1.0;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), skin);
-  head.scale.set(0.78, 1.32, 1.0);
-  head.position.set(0.03, 1.66, -0.44); head.rotation.set(0.35, 0, 0.55);
-  const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), dark);
-  mouth.scale.set(0.9, 2.4, 0.5); mouth.position.set(0.06, 1.55, -0.53); mouth.rotation.z = 0.5;
-  g.add(neck, head, mouth);
-
-  for (const side of [-1, 1]) {
-    // arms hang to the knees, elbows bent the wrong way, fingers too long and curled
-    const arm = new THREE.Group();
-    arm.name = side < 0 ? 'armL' : 'armR';
-    arm.position.set(side * 0.2, 1.42, -0.2);
-    const upper = limb(0.032, 0.48); upper.position.y = -0.27;
-    const fore = limb(0.026, 0.5); fore.position.set(0, -0.78, -0.08); fore.rotation.x = 0.25;
-    arm.add(upper, fore);
-    for (let f = 0; f < 4; f++) {
-      const finger = limb(0.007, 0.16);
-      finger.position.set((f - 1.5) * 0.018, -1.12, -0.12); finger.rotation.set(0.5 + f * 0.08, 0, (f - 1.5) * 0.12);
-      arm.add(finger);
-    }
-    arm.rotation.set(-0.35, 0, side * 0.1);
-    const leg = new THREE.Group();
-    leg.name = side < 0 ? 'legL' : 'legR';
-    leg.position.set(side * 0.1, 0.9, 0.02);
-    const thigh = limb(0.045, 0.42); thigh.position.set(0, -0.22, -0.05); thigh.rotation.x = -0.25;
-    const shin = limb(0.035, 0.42); shin.position.set(0, -0.66, 0.02); shin.rotation.x = 0.2;
-    leg.add(thigh, shin);
-    g.add(arm, leg);
-  }
-  return g;
-}

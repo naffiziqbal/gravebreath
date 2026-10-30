@@ -5,6 +5,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { Assets } from '../engine/assets';
 import { materialFrom } from '../engine/renderer';
 import { clodGeometry } from './builder';
+import { buildSkinned, type SkinnedData } from '../engine/skinned';
 
 export type HandsInput = {
   phase: string;
@@ -29,7 +30,7 @@ const MOUTH = new THREE.Euler().setFromRotationMatrix(new THREE.Matrix4().makeBa
 const pose = (x: number, y: number, z: number, rx: number, ry: number, rz: number, curl: number): Pose =>
   ({ pos: new THREE.Vector3(x, y, z), rot: new THREE.Euler(rx, ry, rz, 'YXZ'), curl });
 
-export type HandData = { buffer: ArrayBuffer; bones: { name: string; parent: number; pos: number[] }[] };
+export type HandData = SkinnedData;
 
 /** One hand: a single sculpted, skinned mesh (tools/make_hand.py) on a 16-bone skeleton, plus a forearm in a shroud sleeve. Right-handed; mirrored for the left. */
 class HandRig {
@@ -45,22 +46,9 @@ class HandRig {
     this.root.scale.setScalar(0.9);
     if (mirror) this.root.scale.x = -0.9;
 
-    // bones: rest pose has no rotation, each bone sits at its joint
-    const bones = data.bones.map((b) => { const bone = new THREE.Bone(); bone.name = b.name; return bone; });
-    data.bones.forEach((b, i) => {
-      const p = b.parent >= 0 ? data.bones[b.parent].pos : [0, 0, 0];
-      bones[i].position.set(b.pos[0] - p[0], b.pos[1] - p[1], b.pos[2] - p[2]);
-      if (b.parent >= 0) bones[b.parent].add(bones[i]);
-    });
-    for (const f of ['index', 'middle', 'ring', 'pinky']) this.joints.push([0, 1, 2].map((k) => bones.find((b) => b.name === `${f}${k}`)!));
-    this.thumb = [0, 1, 2].map((k) => bones.find((b) => b.name === `thumb${k}`)!);
-
-    const geo = readHandGeometry(data.buffer);
-    const mesh = new THREE.SkinnedMesh(geo, skin);
-    mesh.add(bones[0]);
-    mesh.updateMatrixWorld(true);
-    mesh.bind(new THREE.Skeleton(bones));
-    mesh.frustumCulled = false;
+    const { mesh, bones, byName } = buildSkinned(data, skin);
+    for (const f of ['index', 'middle', 'ring', 'pinky']) this.joints.push([0, 1, 2].map((k) => byName[`${f}${k}`]));
+    this.thumb = [0, 1, 2].map((k) => byName[`thumb${k}`]);
     wrist.add(mesh);
 
     this.grip.position.set(-0.04, -0.022, -0.112);
@@ -128,24 +116,6 @@ class HandRig {
   get position() { return this.cur.pos; }
 }
 
-/** hand.bin: V, F, then positions, normals, uvs, colours (f32), skin indices (u16 x4), skin weights (f32 x4), triangles (u32). */
-function readHandGeometry(buf: ArrayBuffer) {
-  const head = new Uint32Array(buf, 0, 2);
-  const V = head[0], F = head[1];
-  let o = 8;
-  const f32 = (n: number) => { const a = new Float32Array(buf.slice(o, o + n * 4)); o += n * 4; return a; };
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(f32(V * 3), 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(f32(V * 3), 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(f32(V * 2), 2));
-  g.setAttribute('color', new THREE.BufferAttribute(f32(V * 3), 3));
-  const si = new Uint16Array(buf.slice(o, o + V * 8)); o += V * 8;
-  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
-  g.setAttribute('skinWeight', new THREE.BufferAttribute(f32(V * 4), 4));
-  g.setIndex(new THREE.BufferAttribute(new Uint32Array(buf.slice(o, o + F * 12)), 1));
-  return g;
-}
-
 export class Hands {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
@@ -173,7 +143,7 @@ export class Hands {
   }
 
   async init(assets: Assets) {
-    const [dirt, linen, hand] = await Promise.all([assets.materialMaps('grave_dirt'), assets.materialMaps('coffin_linen'), assets.handData()]);
+    const [dirt, linen, hand] = await Promise.all([assets.materialMaps('grave_dirt'), assets.materialMaps('coffin_linen'), assets.skinnedData('hand')]);
     // flesh, with grime painted into the creases and nails (vertex colours) and only a faint pore/dirt relief
     const skinOpts = { color: 0xc08f78, roughness: 0.62, normalMap: dirt.normalMap, normalScale: new THREE.Vector2(0.18, 0.18) };
     const skin = new THREE.MeshStandardMaterial({ ...skinOpts, vertexColors: true });
