@@ -1,25 +1,50 @@
 {
   "expo": {
-    "name": "gravebreath",
+    "name": "Gravebreath",
     "slug": "gravebreath",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "requireFullScreen": true,
+      "bundleIdentifier": "bd.nexusbenders.gravebreath"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "bd.nexusbenders.gravebreath"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-audio",
+      "expo-router",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Nosifer-Regular.ttf",
+            "./assets/fonts/Creepster-Regular.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "LANDSCAPE"
+        }
+      ]
+    ],
+    "scheme": "gravebreath",
+    "backgroundColor": "#000000"
   }
 }

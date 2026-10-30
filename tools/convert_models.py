@@ -1,0 +1,121 @@
+"""Turn the raw Poly Haven downloads in art-source/ into phone-sized game assets.
+
+- Texture sets -> diffuse + normal + packed "arm" (R = ambient occlusion, G = roughness, B = 0),
+  the channel layout three.js MeshStandardMaterial reads for aoMap / roughnessMap.
+- glTF models -> .glb (geometry + materials only, transmission stripped) and their textures shrunk
+  to 512 px. Images keep their original uri as a lookup key; the app supplies them from the manifest.
+- Writes src/game/engine/manifest.ts with static require() calls so Metro bundles everything.
+
+Run: tools/.venv/bin/python -I tools/convert_models.py
+"""
+import json, os, struct, shutil
+from PIL import Image
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.join(ROOT, "art-source")
+OUT = os.path.join(ROOT, "assets", "game")
+MANIFEST = os.path.join(ROOT, "src", "game", "engine", "manifest.ts")
+
+# surfaces the player sees up close keep 2048 px, the rest 1024
+TEXTURE_SIZE = {"coffin_wood": 2048, "crypt_wall": 2048}
+MODEL_TEX = 512
+
+def save_jpg(img, path, size, quality=88):
+    img = img.convert("RGB")
+    if max(img.size) > size:
+        img = img.resize((size, size * img.size[1] // img.size[0]), Image.LANCZOS)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    img.save(path, "JPEG", quality=quality, optimize=True)
+
+def rel_require(path):
+    rel = os.path.relpath(path, os.path.dirname(MANIFEST)).replace(os.sep, "/")
+    return f"require('{rel}')"
+
+def convert_textures():
+    out = {}
+    tdir = os.path.join(SRC, "textures")
+    for name in sorted(os.listdir(tdir)):
+        d = os.path.join(tdir, name)
+        size = TEXTURE_SIZE.get(name, 1024)
+        dst = os.path.join(OUT, "textures", name)
+        diff = Image.open(os.path.join(d, f"{name}_diff.jpg"))
+        save_jpg(diff, os.path.join(dst, "diff.jpg"), size)
+        save_jpg(Image.open(os.path.join(d, f"{name}_nor.jpg")), os.path.join(dst, "nor.jpg"), size, 92)
+        rough = Image.open(os.path.join(d, f"{name}_rough.jpg")).convert("L")
+        ao_path = os.path.join(d, f"{name}_ao.jpg")
+        ao = Image.open(ao_path).convert("L") if os.path.exists(ao_path) else Image.new("L", rough.size, 255)
+        ao = ao.resize(rough.size)
+        arm = Image.merge("RGB", (ao, rough, Image.new("L", rough.size, 0)))
+        save_jpg(arm, os.path.join(dst, "arm.jpg"), size)
+        out[name] = {k: os.path.join(dst, f"{k}.jpg") for k in ("diff", "nor", "arm")}
+        print("texture", name, size)
+    return out
+
+def pad4(b, fill=b"\x00"):
+    return b + fill * ((4 - len(b) % 4) % 4)
+
+def convert_models():
+    out = {}
+    mdir = os.path.join(SRC, "models")
+    for mid in sorted(os.listdir(mdir)):
+        d = os.path.join(mdir, mid)
+        g = json.load(open(os.path.join(d, f"{mid}.gltf")))
+        bin_data = open(os.path.join(d, g["buffers"][0]["uri"]), "rb").read()
+        # drop costly glass transmission; three falls back to the base material
+        g["extensionsUsed"] = [e for e in g.get("extensionsUsed", []) if e != "KHR_materials_transmission"]
+        g["extensionsRequired"] = [e for e in g.get("extensionsRequired", []) if e != "KHR_materials_transmission"]
+        if not g["extensionsUsed"]: g.pop("extensionsUsed")
+        if not g["extensionsRequired"]: g.pop("extensionsRequired")
+        srgb_images = set()
+        for m in g.get("materials", []):
+            (m.get("extensions") or {}).pop("KHR_materials_transmission", None)
+            for key in ("baseColorTexture",):
+                t = m.get("pbrMetallicRoughness", {}).get(key)
+                if t: srgb_images.add(g["textures"][t["index"]]["source"])
+            if "emissiveTexture" in m: srgb_images.add(g["textures"][m["emissiveTexture"]["index"]]["source"])
+        images = {}
+        for i, im in enumerate(g.get("images", [])):
+            uri = im["uri"]
+            if uri in images: continue
+            dst = os.path.join(OUT, "models", mid, os.path.basename(uri).replace("_1k", ""))
+            save_jpg(Image.open(os.path.join(d, uri)), dst, MODEL_TEX)
+            images[uri] = {"path": dst, "srgb": i in srgb_images or any(
+                j in srgb_images for j, o in enumerate(g["images"]) if o["uri"] == uri)}
+        g["buffers"] = [{"byteLength": len(bin_data)}]
+        js = pad4(json.dumps(g, separators=(",", ":")).encode(), b" ")
+        bn = pad4(bin_data)
+        glb = struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(bn))
+        glb += struct.pack("<II", len(js), 0x4E4F534A) + js + struct.pack("<II", len(bn), 0x004E4942) + bn
+        gpath = os.path.join(OUT, "models", f"{mid}.glb")
+        os.makedirs(os.path.dirname(gpath), exist_ok=True)
+        open(gpath, "wb").write(glb)
+        out[mid] = {"glb": gpath, "images": images}
+        print("model", mid, f"{len(glb) // 1024} KB")
+    return out
+
+def write_manifest(textures, models):
+    lines = ["/* eslint-disable @typescript-eslint/no-require-imports */", "// Generated by tools/convert_models.py. Do not edit by hand.", "",
+             "export type TextureSet = { diff: number; nor: number; arm: number };",
+             "export type ModelAsset = { glb: number; images: Record<string, { src: number; srgb: boolean }> };", "",
+             "export const TEXTURES = {"]
+    for name, maps in textures.items():
+        lines.append(f"  {name}: {{ diff: {rel_require(maps['diff'])}, nor: {rel_require(maps['nor'])}, arm: {rel_require(maps['arm'])} }},")
+    lines += ["} satisfies Record<string, TextureSet>;", "", "export type TextureName = keyof typeof TEXTURES;", "", "export const MODELS = {"]
+    for mid, m in models.items():
+        lines.append(f"  {mid}: {{")
+        lines.append(f"    glb: {rel_require(m['glb'])},")
+        lines.append("    images: {")
+        for uri, im in m["images"].items():
+            lines.append(f"      '{uri}': {{ src: {rel_require(im['path'])}, srgb: {'true' if im['srgb'] else 'false'} }},")
+        lines.append("    },")
+        lines.append("  },")
+    lines += ["} satisfies Record<string, ModelAsset>;", "", "export type ModelName = keyof typeof MODELS;", ""]
+    open(MANIFEST, "w").write("\n".join(lines))
+
+if __name__ == "__main__":
+    if os.path.exists(OUT): shutil.rmtree(OUT)
+    t = convert_textures()
+    m = convert_models()
+    write_manifest(t, m)
+    total = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(OUT) for f in fs)
+    print(f"done: {total / 1e6:.1f} MB in assets/game")

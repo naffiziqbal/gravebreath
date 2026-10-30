@@ -1,0 +1,88 @@
+// On-screen controls and readouts. Kept sparse: the darkness and the breathing are the real HUD.
+import { useEffect, type RefObject } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import type { Game } from '../game/Game';
+import { useGame } from '../game/store';
+import { blood, bone, fonts } from '../theme';
+import { ActionPad } from './ActionPad';
+
+export function Hud({ game }: { game: RefObject<Game | null> }) {
+  const hud = useGame((s) => s.hud);
+  const subtitle = useGame((s) => s.subtitle);
+  const g = () => game.current;
+  // if the button disappears mid-hold, its release never fires; let go for the player
+  useEffect(() => {
+    if (!hud.action) game.current?.setInput({ interact: false });
+  }, [hud.action, game]);
+  if (hud.phase === 'loading') {
+    return (
+      <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
+        <Text style={styles.loading}>Your eyes adjust to the dark…</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {/* air: a thin bar, because breathing alone is hard to read on a phone speaker */}
+      <View style={styles.airWrap} pointerEvents="none">
+        <View style={[styles.air, { width: `${Math.round(hud.air * 100)}%`, backgroundColor: hud.air < 0.3 ? blood : 'rgba(220,214,204,0.55)' }]} />
+      </View>
+      {hud.room && <Text style={styles.room} pointerEvents="none">{hud.room}</Text>}
+      {hud.noise !== null && <NoiseMeter level={hud.noise} hunted={hud.hunted} />}
+      {hud.debug && <Text style={styles.debug} pointerEvents="none">{hud.debug}</Text>}
+      {subtitle && <Text style={styles.subtitle} pointerEvents="none">{subtitle}</Text>}
+
+      {hud.prompt && (
+        <View style={styles.promptWrap} pointerEvents="none">
+          <Text style={styles.prompt}>{hud.prompt}</Text>
+          {hud.progress !== null && (
+            <View style={styles.progressWrap}><View style={[styles.progress, { width: `${Math.round(hud.progress * 100)}%` }]} /></View>
+          )}
+        </View>
+      )}
+
+      <ActionPad
+        action={hud.action} holdAction={hud.holdAction} progress={hud.progress}
+        matches={hud.matches} matchLit={hud.matchLit} battery={hud.battery} phoneOn={hud.phoneOn}
+        onAction={(down) => g()?.setInput({ interact: down })}
+        onMatch={() => g()?.lightMatch()}
+        onPhone={() => g()?.usePhone()}
+        onCalm={(down) => g()?.setInput({ calming: down })}
+        onHoldBreath={(down) => g()?.setInput({ holdingBreath: down })}
+      />
+    </View>
+  );
+}
+
+/** How far away you can be heard. Five bars; red when the Listener is coming. */
+function NoiseMeter({ level, hunted }: { level: number; hunted: boolean }) {
+  const bars = [0.1, 0.25, 0.45, 0.7, 0.95];
+  return (
+    <View style={styles.noise} pointerEvents="none">
+      <Text style={[styles.noiseLabel, hunted && { color: blood }]}>{hunted ? 'IT HEARS YOU' : level === 0 ? 'SILENT' : 'NOISE'}</Text>
+      <View style={styles.noiseBars}>
+        {bars.map((t, i) => (
+          <View key={i} style={[styles.noiseBar, { height: 5 + i * 3 }, level >= t && { backgroundColor: hunted ? blood : 'rgba(228,216,196,0.7)' }]} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  center: { alignItems: 'center', justifyContent: 'center' },
+  loading: { color: bone, fontFamily: fonts.creepster, fontSize: 26, opacity: 0.7 },
+  airWrap: { position: 'absolute', top: 14, alignSelf: 'center', width: 220, height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' },
+  air: { height: 3 },
+  room: { position: 'absolute', top: 24, alignSelf: 'center', color: 'rgba(220,210,200,0.45)', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' },
+  noise: { position: 'absolute', top: 44, alignSelf: 'center', alignItems: 'center' },
+  noiseLabel: { color: 'rgba(228,216,196,0.5)', fontSize: 9, letterSpacing: 2, marginBottom: 3 },
+  noiseBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  noiseBar: { width: 5, borderRadius: 1, backgroundColor: 'rgba(228,216,196,0.15)' },
+  debug: { position: 'absolute', top: 8, left: 12, color: 'rgba(255,255,255,0.4)', fontSize: 10 },
+  subtitle: { position: 'absolute', bottom: 34, left: 80, right: 290, textAlign: 'center', color: blood, fontFamily: fonts.creepster, fontSize: 24, textShadowColor: '#000', textShadowRadius: 6, textShadowOffset: { width: 0, height: 2 } },
+  promptWrap: { position: 'absolute', top: '58%', alignSelf: 'center', alignItems: 'center' },
+  prompt: { color: bone, fontSize: 15, letterSpacing: 1, textShadowColor: '#000', textShadowRadius: 4 },
+  progressWrap: { marginTop: 6, width: 140, height: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
+  progress: { height: 3, backgroundColor: blood },
+});
