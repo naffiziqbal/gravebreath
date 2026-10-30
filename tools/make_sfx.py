@@ -174,5 +174,40 @@ def main():
     x = np.zeros(secs(0.6)); add(x, 0, knock() * 0.3); n = secs(0.25); add(x, 0.05, bp(noise(n), 2500, 7000) * env_exp(n, 0.04), 0.6)
     write("pickup", x, 0.5)
 
+def say(text, voice="Whisper", rate=110, pitch=0.8):
+    """Render speech with the macOS voice, pitched and slowed (the tool runs on a Mac)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        aiff, wav = os.path.join(tmp, "v.aiff"), os.path.join(tmp, "v.wav")
+        subprocess.run(["say", "-v", voice, "-r", str(rate), "-o", aiff, text], check=True)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", aiff, "-af", f"asetrate=22050*{pitch},aresample={SR}",
+                        "-ac", "1", "-ar", str(SR), wav], check=True)
+        with wave.open(wav) as f:
+            return np.frombuffer(f.readframes(f.getnframes()), np.int16).astype(np.float64) / 32768
+
+def necropolis():
+    """The Hushmen's murmured chant, their alert, splashing through the chapel, a lantern's creak."""
+    words = ["hush", "hush", "feed the deep", "one breath", "hush", "the ledger is open", "hush", "keep your hand upon your mouth"]
+    n = secs(12.4); x = np.zeros(n)
+    t = 0.2
+    for k, w in enumerate(words * 2):
+        v = say(w, pitch=0.72 + 0.06 * (k % 3))
+        add(x, t, v, 0.7); add(x, t + 0.09, say(w, pitch=0.6), 0.35)  # a second, lower voice a beat behind
+        t += len(v) / SR + random.uniform(0.25, 0.6)
+        if t > 11.8: break
+    write("hushman_chant_loop", loopify(room(lp(x, 4500), 2.0, 0.5, 0.4)), 0.7)
+    alert = say("there", rate=160, pitch=0.68)
+    a = np.zeros(secs(2.2)); add(a, 0.0, alert, 1.0); add(a, 0.05, ghost(2.0, 46.0, attack=0.04, tau=0.7, bright=2600, seed=11), 0.55)
+    write("hushman_alert", room(a, 1.5, 0.4, 0.4))
+    for k in range(3):
+        m = secs(0.7); sp = bp(noise(m), 300, 3500) * env_exp(m, 0.08)
+        for _ in range(9):  # droplets
+            i = rng.integers(secs(0.05), m - 600); f0 = rng.uniform(900, 2400); tt = np.arange(600) / SR
+            sp[i:i + 600] += np.sin(2 * np.pi * f0 * tt * (1 + tt * 4)) * env_exp(600, 0.006) * 0.25
+        write(f"water_step_{k}", room(sp, 1.2, 0.3, 0.3), 0.6)
+    c = creak(0.7) * 0.6 + bp(noise(secs(0.7)), 2500, 6000) * env_exp(secs(0.7), 0.05) * 0.2
+    write("lantern_creak", room(c, 1.0, 0.25, 0.2), 0.45)
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if "--necropolis" in sys.argv: necropolis()
+    else: main(); necropolis()

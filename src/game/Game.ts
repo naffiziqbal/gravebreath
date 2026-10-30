@@ -6,10 +6,14 @@ import { DECALS } from './engine/media';
 import { Sound } from './audio/sound';
 import { buildCoffin, buildCrypt, type Box, type Coffin, type Crypt, type Level, type LiveInteractable } from './world/builder';
 import { buildCatacombs, type Catacombs } from './world/catacombs';
+import { buildNecropolis, type Necropolis } from './world/necropolis';
+import { animateHushman } from './world/hushmanRig';
 import { Hands, type PickupKind } from './world/hands';
 import { animateListener } from './world/listenerRig';
 import { generateLayout, type Layout } from './sim/layout';
 import { generateCatacombs, neighbours } from './sim/catacombs';
+import { generateNecropolis, HALL_DEPTH } from './sim/necropolis';
+import { spawnHushman, stepHushman, type HushmanState } from './sim/hushman';
 import { noiseRadius, spawnListener, stepListener, type ListenerState } from './sim/listener';
 import { createRng, type Rng } from './sim/rng';
 import { airFraction, newRun, scare, step, strikeMatch, togglePhone, type Movement, type RunState } from './sim/run';
@@ -31,7 +35,7 @@ export type DebugStart = { layer?: number; match?: boolean; phone?: boolean; yaw
 
 export type Input = { moveX: number; moveY: number; calming: boolean; holdingBreath: boolean; interact: boolean };
 
-type Phase = 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'over';
+type Phase = 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'over';
 
 const POOL = 3; // world point lights, fixed count so shaders never recompile mid-run
 const LOUDEST = 13; // metres; the noise meter is full at this hearing radius
@@ -49,6 +53,10 @@ export class Game {
   private crypt!: Crypt;
   private catacombs: Catacombs | null = null;
   private catacombsReady: Promise<Catacombs> | null = null;
+  private necropolis: Necropolis | null = null;
+  private necropolisReady: Promise<Necropolis> | null = null;
+  private hushmen: HushmanState[] = [];
+  private chantTimer = 0;
   private level: Level | null = null; // where you are walking now
   private scene!: THREE.Scene; // what is being drawn
   private layout: Layout;
@@ -89,7 +97,8 @@ export class Game {
   private shriekCooldown = 0;
   private dragTimer = 0;
   private lunge = 0; // seconds since the Listener caught you
-  private listenerDeaf = false; // dev only: the gameplay recorder holds it aside between staged moments
+  private listenerDeaf = false;
+  private hushmenBlind = false; // dev only, like listenerDeaf // dev only: the gameplay recorder holds it aside between staged moments
   private fpsAt = 0;
   private fpsFrames = 0;
   private fpsShown = 0;
@@ -138,6 +147,14 @@ export class Game {
     this.attach(this.coffin.scene);
     this.renderer.three.compile(this.coffin.scene, this.camera);
     mark('shaders compiled');
+    if (__DEV__ && this.debug.layer === 4) {
+      this.lidProgress = 1;
+      this.necropolisReady = buildNecropolis(this.assets, generateNecropolis(this.run.seed, this.meta.clues));
+      this.goToNecropolis();
+      setTimeout(() => { if (this.debug.match) this.lightMatch(); if (this.debug.phone) this.usePhone(); }, 2500);
+      mark('debug start in the necropolis');
+      return;
+    }
     if (__DEV__ && this.debug.layer === 3) {
       this.lidProgress = 1;
       this.catacombsReady = buildCatacombs(this.assets, generateCatacombs(this.run.seed, this.meta.clues));
@@ -191,7 +208,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- phases
-  private get walking() { return this.phase === 'crypt' || this.phase === 'catacombs'; }
+  private get walking() { return this.phase === 'crypt' || this.phase === 'catacombs' || this.phase === 'necropolis'; }
   private get alive() { return this.phase === 'coffin' || this.walking; }
 
   /** The camera (with your match and phone) and the shared light pool can only be in one scene at a time. */
@@ -214,7 +231,7 @@ export class Game {
     setTimeout(() => this.events.say(null), 11000);
   }
 
-  private enterLevel(level: Level, phase: 'crypt' | 'catacombs', line: string) {
+  private enterLevel(level: Level, phase: 'crypt' | 'catacombs' | 'necropolis', line: string) {
     this.phase = phase;
     this.level = level;
     this.attach(level.scene);
@@ -246,7 +263,25 @@ export class Game {
       this.listener = spawnListener(c.layout.maze, start);
       this.sound.play('ghost_swell', 0.8);
       this.enterLevel(c, 'catacombs', 'The catacombs. Bones line every wall. Something down here is breathing.');
+      this.necropolisReady = buildNecropolis(this.assets, generateNecropolis(this.run.seed, [...this.meta.clues, ...this.foundClues]));
     }).catch((e) => console.error('catacombs failed to load', e));
+  }
+
+  private goToNecropolis() {
+    this.phase = 'over';
+    this.fadeTarget = 1;
+    this.focus = null;
+    this.sound.play('step_stone_0', 0.6);
+    const ready = this.necropolisReady ?? buildNecropolis(this.assets, generateNecropolis(this.run.seed, this.meta.clues));
+    Promise.all([ready, new Promise((r) => setTimeout(r, 1600))]).then(([n]) => {
+      if (this.run.dead || this.ended) return;
+      this.necropolis = n;
+      this.attach(n.scene);
+      this.renderer.three.compile(n.scene, this.camera);
+      this.hushmen = n.layout.routes.map((route, i) => spawnHushman(route, i * 2));
+      this.sound.play('ghost_swell', 0.8);
+      this.enterLevel(n, 'necropolis', 'The necropolis. Lanterns move between the tombs. Keep to the dark.');
+    }).catch((e) => console.error('necropolis failed to load', e));
   }
 
   private endRun(fate: RunEnd['fate'], layer: number) {
@@ -288,6 +323,7 @@ export class Game {
     if (this.phase === 'coffin') this.updateCoffin(dt, pushing);
     if (this.walking) this.updateWalk(dt, movement, mag);
     if (this.phase === 'catacombs') this.updateListener(dt);
+    if (this.phase === 'necropolis') this.updateHushmen(dt);
     this.updateLights(dt);
     this.updateAudio(dt, inPocket, pushing || !!digging);
 
@@ -441,7 +477,7 @@ export class Game {
       const before = this.bob;
       this.bob += dt * speed * 3.2;
       // a footstep each time the head bob crosses a footfall: stone in the crypt, packed dirt in the catacombs
-      if (Math.floor(before / Math.PI) !== Math.floor(this.bob / Math.PI)) this.sound.playVariant(level.layer === 3 ? 'step_dirt' : 'step_stone', movement === 'sprint' ? 0.85 : 0.35 + 0.3 * mag);
+      if (Math.floor(before / Math.PI) !== Math.floor(this.bob / Math.PI)) this.sound.playVariant(level.layer === 4 && this.pos.z < -HALL_DEPTH ? 'water_step' : level.layer === 3 ? 'step_dirt' : 'step_stone', movement === 'sprint' ? 0.85 : 0.35 + 0.3 * mag);
     }
     const bobY = Math.sin(this.bob) * (movement === 'sprint' ? 0.045 : 0.025);
     const breathe = Math.sin(this.time * (1.2 + this.run.panic * 2)) * 0.006;
@@ -508,6 +544,7 @@ export class Game {
       });
     } else if (pressed && def.type === 'exit') {
       if (def.to === 3) this.goToCatacombs();
+      else if (def.to === 4) this.goToNecropolis();
       else { this.run = { ...this.run, escaped: true }; this.endRun('escaped', def.to); }
     }
   }
@@ -577,6 +614,48 @@ export class Game {
       it.object.visible = false;
       this.sound.play(kind === 'paper' ? 'take_paper' : kind === 'watch' ? 'take_metal' : 'take_matches', 0.8);
     }, effect);
+  }
+
+  /** The Hushmen walk their rounds, look with their lanterns, and come for you if they see you long enough. */
+  private updateHushmen(dt: number) {
+    const n = this.necropolis;
+    if (!n) return;
+    const player = { x: this.pos.x, z: this.pos.z, noise: this.noise, lit: this.run.matchTime > 0 || this.run.phoneOn, moving: Math.hypot(this.input.moveX, this.input.moveY) > 0.15 };
+    if (__DEV__ && this.hushmenBlind) Object.assign(player, { x: 9999, z: 9999, noise: 0, lit: false }); // the recorder keeps them blind between staged moments
+    let nearest = Infinity;
+    let caught = false;
+    this.hushmen = this.hushmen.map((h, i) => {
+      const before = { x: h.x, z: h.z };
+      const r = stepHushman(h, dt, player, n.layout.tombs);
+      const rig = n.hushmen[i];
+      const moving = Math.hypot(r.state.x - before.x, r.state.z - before.z) > 1e-4;
+      rig.group.position.set(r.state.x, 0, r.state.z);
+      rig.group.rotation.y = r.state.heading; // model and heading both face -z at 0
+      animateHushman(rig, { time: this.time + i * 1.7, dt, mode: r.state.mode, moving, heading: r.state.heading, flicker: this.flick });
+      const d = Math.hypot(this.pos.x - r.state.x, this.pos.z - r.state.z);
+      nearest = Math.min(nearest, d);
+      if (r.startedChase) {
+        this.sound.play('hushman_alert', Math.max(0.6, 1 - d / 14));
+        this.run = scare(this.run, 0.55);
+        this.events.haptic('heavy');
+        this.events.say(player.lit ? 'They saw your light.' : 'A lantern turns toward you.');
+        setTimeout(() => this.events.say(null), 2500);
+      }
+      if (moving && Math.random() < dt * (r.state.mode === 'chase' ? 3 : 1.3) && d < 12) this.sound.playVariant('step_stone', Math.max(0, 1 - d / 12) * 0.5);
+      caught ||= r.caught;
+      return r.state;
+    });
+    this.sound.setLoop('hushman_chant_loop', Math.pow(Math.max(0, 1 - nearest / 13), 1.3) * 0.85, dt, 2);
+    this.chantTimer -= dt;
+    if (this.chantTimer <= 0 && nearest < 9) { this.chantTimer = 3 + Math.random() * 4; this.sound.play('lantern_creak', Math.max(0, 1 - nearest / 9) * 0.6); }
+    // the fog drifts
+    n.fog.forEach((f, k) => { const t = (f.material as THREE.MeshBasicMaterial).map!; t.offset.x += dt * 0.006 * (k + 1); t.offset.y += dt * 0.003 * (k % 2 ? -1 : 1); });
+    if (caught && !this.ended) {
+      this.flash = 0.35;
+      this.shake = 1;
+      this.events.haptic('heavy');
+      this.endRun('taken', 4);
+    }
   }
 
   private freeSurvivor(it: LiveInteractable) {
@@ -668,6 +747,7 @@ export class Game {
     s.setLoop('heartbeat', this.alive ? Math.min(1, Math.max(0, (0.45 - air) * 2) + r.panic * 0.35) : 0, dt);
     s.setLoop('match_burn_loop', r.matchTime > 0 ? 0.35 : 0, dt, 10);
     if (this.phase !== 'catacombs') s.setLoop('listener_breath_loop', 0, dt, 3);
+    if (this.phase !== 'necropolis') s.setLoop('hushman_chant_loop', 0, dt, 2);
     let wind = inPocket ? 0.7 : 0;
     if (this.walking && this.level) {
       for (const a of this.level.airPockets) wind = Math.max(wind, 0.5 * Math.max(0, 1 - Math.hypot(a.pos.x - this.pos.x, a.pos.z - this.pos.z) / 6));
@@ -689,8 +769,9 @@ export class Game {
     this.events.hud({
       phase: this.phase, air: airFraction(r), panic: r.panic, matches: r.matches, matchLit: r.matchTime > 0,
       battery: r.battery, phoneOn: r.phoneOn, prompt, action, holdAction, progress, room: area?.name ?? null,
-      noise: this.phase === 'catacombs' ? Math.min(1, this.noise / LOUDEST) : null,
-      hunted: this.phase === 'catacombs' && this.listener?.mode === 'hunt',
+      noise: this.phase === 'catacombs' || this.phase === 'necropolis' ? Math.min(1, this.noise / LOUDEST) : null,
+      hunted: (this.phase === 'catacombs' && this.listener?.mode === 'hunt') || (this.phase === 'necropolis' && this.hushmen.some((h) => h.mode === 'chase')),
+      seen: this.phase === 'necropolis' ? Math.max(0, ...this.hushmen.map((h) => h.suspicion)) : null,
       debug: __DEV__ ? `${this.renderer.width}x${this.renderer.height} → ${Math.round(this.renderer.width * this.renderer.scale)}x${Math.round(this.renderer.height * this.renderer.scale)} · ${this.fpsShown} fps` : null,
     });
   }

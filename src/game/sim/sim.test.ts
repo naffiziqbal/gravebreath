@@ -167,3 +167,65 @@ test('catacomb clues only appear in the catacombs, crypt clues only in the crypt
     assert.ok(cat.every((c) => (c as { clueId: string }).clueId.startsWith('cat-')), `seed ${seed}`);
   }
 });
+
+import { generateNecropolis, sightBlocked, HALL_DEPTH } from './necropolis.ts';
+import { canSee, spawnHushman, stepHushman, HUSHMAN } from './hushman.ts';
+
+test('necropolis layouts are reproducible, keep the central aisle clear and lead to the chapel', () => {
+  const a = generateNecropolis(4, []);
+  assert.equal(JSON.stringify(a), JSON.stringify(generateNecropolis(4, [])));
+  for (let seed = 1; seed <= 100; seed++) {
+    const L = generateNecropolis(seed, []);
+    assert.ok(L.tombs.every((t) => Math.abs(t.x) - t.w / 2 > 1.0), `seed ${seed}: a tomb blocks the central aisle`);
+    const exit = L.interactables.find((i) => i.type === 'exit');
+    assert.ok(exit && exit.type === 'exit' && exit.to === 5 && exit.z < -HALL_DEPTH, `seed ${seed}: no way up from the chapel`);
+    assert.ok(L.interactables.filter((i) => i.type === 'clue').every((c) => (c as { clueId: string }).clueId.startsWith('nec-')));
+  }
+});
+
+test('the final ledger page waits in the chapel only once the story reaches act 3', () => {
+  const early = generateNecropolis(5, []).interactables.some((i) => i.type === 'clue' && i.clueId === 'ledger-page-final');
+  const many = Array.from({ length: 15 }, (_, k) => `found-${k}`);
+  const late = generateNecropolis(5, many).interactables.some((i) => i.type === 'clue' && i.clueId === 'ledger-page-final');
+  assert.equal(early, false);
+  assert.equal(late, true);
+});
+
+test('tall tombs block sight, low sarcophagi do not', () => {
+  const wall = [{ kind: 'mausoleum' as const, x: 0, z: -5, w: 2, d: 2, h: 2.6, rotY: 0 }];
+  const low = [{ kind: 'sarcophagus' as const, x: 0, z: -5, w: 1, d: 2, h: 0.95, rotY: 0 }];
+  assert.equal(sightBlocked({ x: 0, z: 0 }, { x: 0, z: -10 }, wall), true);
+  assert.equal(sightBlocked({ x: 0, z: 0 }, { x: 0, z: -10 }, low), false);
+  assert.equal(sightBlocked({ x: 3, z: 0 }, { x: 3, z: -10 }, wall), false);
+});
+
+test('a Hushman sees ahead within the lantern beam, and sees a lit match from behind', () => {
+  const h = spawnHushman([{ x: 0, z: 0 }, { x: 0, z: -10 }]); // facing -z
+  const dark = { noise: 0, lit: false, moving: false };
+  assert.equal(canSee(h, { x: 0, z: -5, ...dark }, []), true);
+  assert.equal(canSee(h, { x: 0, z: 5, ...dark }, []), false); // behind him
+  assert.equal(canSee(h, { x: 0, z: 5, ...dark, lit: true }, []), true); // your light gives you away
+  assert.equal(canSee(h, { x: 0, z: -(HUSHMAN.sight + 2), ...dark }, []), false);
+});
+
+test('seen for long enough starts a chase, and a chase that reaches you catches you', () => {
+  let h = spawnHushman([{ x: 0, z: 0 }, { x: 0, z: -20 }]);
+  const player = { x: 0, z: -6, noise: 5, lit: false, moving: true };
+  let chased = false, caught = false;
+  for (let t = 0; t < 20 && !caught; t += 0.05) {
+    const r = stepHushman(h, 0.05, player, []);
+    h = r.state; chased ||= r.startedChase; caught = r.caught;
+  }
+  assert.equal(chased, true);
+  assert.equal(caught, true);
+});
+
+test('hidden behind a mausoleum, a Hushman patrols on and loses interest', () => {
+  let h = spawnHushman([{ x: 0, z: 0 }, { x: 0, z: -3 }]);
+  const wall = [{ kind: 'mausoleum' as const, x: 0, z: -6, w: 3, d: 2, h: 2.6, rotY: 0 }];
+  const hidden = { x: 0, z: -8, noise: 0, lit: false, moving: false };
+  let chased = false;
+  for (let t = 0; t < 30; t += 0.05) { const r = stepHushman(h, 0.05, hidden, wall); h = r.state; chased ||= r.startedChase; }
+  assert.equal(chased, false);
+  assert.equal(h.mode, 'patrol');
+});

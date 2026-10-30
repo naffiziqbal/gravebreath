@@ -5,7 +5,7 @@ import type { Meta } from './sim/meta';
 import { loadMeta, saveMeta } from './save';
 
 export type Hud = {
-  phase: 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'over';
+  phase: 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'over';
   air: number; // 0..1
   panic: number;
   matches: number;
@@ -18,7 +18,8 @@ export type Hud = {
   progress: number | null; // 0..1 while digging or pushing
   room: string | null;
   noise: number | null; // 0..1, how far you can be heard; only in the catacombs
-  hunted: boolean; // the Listener is coming for you
+  hunted: boolean; // something is coming for you
+  seen: number | null; // 0..1, how close a Hushman is to spotting you; only in the necropolis
   debug: string | null; // dev builds only: render resolution and fps
 };
 
@@ -37,7 +38,7 @@ type Store = {
   reset(): void;
 };
 
-const initialHud: Hud = { phase: 'loading', air: 1, panic: 0, matches: 0, matchLit: false, battery: 1, phoneOn: false, prompt: null, action: null, holdAction: false, progress: null, room: null, noise: null, hunted: false, debug: null };
+const initialHud: Hud = { phase: 'loading', air: 1, panic: 0, matches: 0, matchLit: false, battery: 1, phoneOn: false, prompt: null, action: null, holdAction: false, progress: null, room: null, noise: null, hunted: false, seen: null, debug: null };
 
 export const useGame = create<Store>((set) => ({
   hud: initialHud,

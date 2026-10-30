@@ -6,6 +6,8 @@ import { Platform } from 'react-native';
 import type { Game } from '../Game';
 import type { Level, LiveInteractable } from '../world/builder';
 import type { Catacombs } from '../world/catacombs';
+import type { Necropolis } from '../world/necropolis';
+import type { HushmanState } from '../sim/hushman';
 import type { ListenerState } from '../sim/listener';
 import { cellCentre, distances, neighbours, nextToward, type Cell, type Maze } from '../sim/catacombs';
 import { PLAYER } from '../config';
@@ -17,6 +19,7 @@ type Internals = {
   phase: string; yaw: number; pitch: number; pos: { x: number; z: number };
   run: { matches: number; matchTime: number; phoneOn: boolean; battery: number; air: number; airMax: number };
   level: Level | null; catacombs: Catacombs | null; listener: ListenerState | null; focus: LiveInteractable | null; listenerDeaf: boolean;
+  necropolis: Necropolis | null; hushmen: HushmanState[]; hushmenBlind: boolean;
   sound: { play(n: string, v?: number): void; loopVolume: Map<string, number>; rates: Map<string, number> };
 };
 
@@ -128,7 +131,7 @@ class Director {
     this.game.setInput({ interact: false }); this.log('press', { down: false });
   }
 
-  private walking() { return this.g.phase === 'crypt' || this.g.phase === 'catacombs'; }
+  private walking() { return this.g.phase === 'crypt' || this.g.phase === 'catacombs' || this.g.phase === 'necropolis'; }
 
   /** Keep some light: a match when one is spare, otherwise the phone. */
   private lightMode: 'match' | 'phone' | 'none' = 'none';
@@ -150,7 +153,8 @@ class Director {
 
   // ------------------------------------------------------------- the run
   async play() {
-    await this.until(() => this.g.phase === 'coffin', 30);
+    await this.until(() => this.g.phase === 'coffin' || this.g.phase === 'necropolis', 30);
+    if (this.g.phase === 'necropolis') { this.log('phase', { phase: 'necropolis' }); await this.necropolis(); return; }
     this.log('phase', { phase: 'coffin' });
     // wake, breathe, listen to the earth landing on the lid
     await this.wait(4.5);
@@ -285,6 +289,101 @@ class Director {
     await this.tap();
   }
 
+  /** Layer 4: creep through the dark, hide from a lantern, take a clue, get spotted by your own match, hide again, reach the chapel. */
+  private async necropolis() {
+    const n = this.g.necropolis!;
+    const tombs = n.layout.tombs;
+    const H = () => this.g.hushmen;
+    const blind = (b: boolean) => { this.g.hushmenBlind = b; };
+    // keep both of them off the route until each staged moment
+    const park = (i: number, x: number, z: number, heading: number) => Object.assign(H()[i], { x, z, heading, mode: 'patrol', suspicion: 0, lastSeen: null, route: [{ x, z }, { x: x + 0.01, z }], waypoint: 0 });
+    blind(true);
+    park(0, -11.6, -27, 0); park(1, 11.6, -27, 0);
+    this.lightMode = 'none';
+    await this.wait(3);
+    this.pitchGoal = 0.25; await this.turnBy(-0.5, 0); await this.turnBy(1.0, 0); await this.turnBy(-0.5, 0); // the size of the hall
+    this.pitchGoal = -0.08;
+
+    // 1. a lantern crosses ahead: hide behind the nearest mausoleum and hold your breath
+    const maus = tombs.filter((t) => t.kind === 'mausoleum' && Math.abs(t.x) < 4 && t.z < -6).sort((a, b) => b.z - a.z)[0] ?? tombs.find((t) => t.kind === 'mausoleum')!;
+    // it walks down the middle of the cross aisle beyond the tomb, clear of the next row
+    const hideZ = maus.z + maus.d / 2 + 0.55, crossZ = nearestCrossAisle(maus.z - maus.d / 2 - 0.6);
+    await this.walkTo(0, Math.min(-2.5, hideZ + 1.5));
+    const side = Math.sign(maus.x) || 1;
+    park(0, side * 11.6, crossZ, side > 0 ? Math.PI / 2 : -Math.PI / 2);
+    Object.assign(H()[0], { route: [{ x: side * 11.6, z: crossZ }, { x: -side * 11.6, z: crossZ }], waypoint: 1 });
+    this.log('stage', { what: 'lantern-crosses' });
+    await this.walkTo(maus.x, hideZ, 0.3);
+    await this.face(maus.x - side * 2.5, crossZ, 0.05);
+    blind(false);
+    this.game.setInput({ holdingBreath: true }); this.log('hold', { breath: true });
+    await this.until(() => H()[0].x * side < -4, 25); // it walks past on the far side of the tomb
+    await this.wait(1);
+    this.game.setInput({ holdingBreath: false }); this.log('hold', { breath: false });
+    blind(true);
+    park(0, -11.6, -27, 0);
+
+    // 2. a clue beside a tomb, reached by the cross aisles
+    const clue = n.interactables.find((it) => it.def.type === 'clue');
+    if (clue) {
+      const aisle = nearestCrossAisle(clue.pos.z);
+      await this.walkTo(0, aisle); await this.walkTo(clue.pos.x, aisle); await this.walkTo(clue.pos.x, clue.pos.z + Math.sign(aisle - clue.pos.z) * 0.6, 0.3);
+      await this.face(clue.pos.x, clue.pos.z, -0.6);
+      await this.wait(0.4); await this.tap(); await this.readClueIfShown();
+      await this.walkTo(clue.pos.x, aisle); await this.walkTo(0, aisle);
+    }
+
+    // 3. strike a match to see; far up the aisle a lantern turns toward the light
+    const here = this.g.pos.z;
+    const watchZ = Math.max(here - 9, -28);
+    park(1, 0, watchZ, Math.PI); // facing south, toward you
+    Object.assign(H()[1], { route: [{ x: 0, z: watchZ }, { x: 0, z: watchZ + 0.1 }] });
+    await this.face(0, watchZ - 1, 0.05);
+    blind(false);
+    this.game.lightMatch(); this.log('button', { name: 'match' });
+    this.log('stage', { what: 'spotted' });
+    await this.until(() => H()[1].mode === 'chase', 6);
+    await this.wait(0.6);
+    // run: sprinting blows the match out; duck behind a mausoleum in an outer column, on its far side from the aisle
+    const cover = tombs.filter((t) => t.kind === 'mausoleum' && Math.abs(t.x) > 5 && t.z < here + 3 && t.z > here - 6)
+      .sort((a, b) => Math.abs(a.z - (here - 1)) - Math.abs(b.z - (here - 1)))[0];
+    // recording safety only: never let it walk right onto us; send it to search further up the aisle instead
+    const safety = setInterval(() => {
+      const h = H()[1];
+      if (Math.hypot(h.x - this.g.pos.x, h.z - this.g.pos.z) < 2.5) Object.assign(h, { mode: 'search', lastSeen: { x: 0, z: Math.max(this.g.pos.z - 5, -28) }, searchLeft: 4, suspicion: 0.6 });
+    }, 50);
+    if (cover) {
+      const s2 = Math.sign(cover.x);
+      const aisle = nearestCrossAisle(cover.z + cover.d / 2 + 0.8);
+      await this.walkTo(0, aisle, 0.4, 1);
+      await this.walkTo(cover.x + s2 * (cover.w / 2 + 0.6), aisle, 0.4, 1);
+      await this.walkTo(cover.x + s2 * (cover.w / 2 + 0.55), cover.z, 0.3, 1);
+      await this.face(cover.x, cover.z, 0);
+      this.game.setInput({ holdingBreath: true }); this.log('hold', { breath: true });
+      await this.until(() => H()[1].mode === 'search', 12);
+      await this.until(() => H()[1].mode === 'patrol', 25);
+      await this.wait(1);
+      this.game.setInput({ holdingBreath: false }); this.log('hold', { breath: false });
+      await this.walkTo(cover.x + s2 * (cover.w / 2 + 0.6), aisle);
+      await this.walkTo(0, aisle);
+    }
+    clearInterval(safety);
+    blind(true);
+    park(1, 11.6, -27, 0);
+
+    // 4. up the central aisle, through the gate, splashing into the flooded chapel
+    await this.walkTo(0, this.g.pos.z - 0.5);
+    await this.walkTo(0, -29.5);
+    this.lightMode = 'match';
+    await this.walkTo(0, -33.5);
+    await this.wait(1.2);
+    const exit = n.interactables.find((it) => it.def.type === 'exit')!;
+    await this.walkTo(0, exit.pos.z + 0.9, 0.3);
+    await this.face(0, exit.pos.z - 1, 0.35);
+    await this.wait(1);
+    await this.tap();
+  }
+
   /** Stop before a junction, hold your breath, and let the Listener cross in front of you. */
   private async encounter(maze: Maze, route: Cell[], k: number) {
     const junction = route[k];
@@ -319,6 +418,12 @@ class Director {
 function deepestBeyond(m: Maze, junction: Cell, side: Cell): Cell {
   const fromJ = distances(m, junction), fromS = distances(m, side);
   return [...fromS.entries()].filter(([c]) => fromJ.get(c) === (fromS.get(c) ?? 0) + 1).sort((a, b) => b[1] - a[1])[0]?.[0] ?? side;
+}
+
+/** The cross aisle (between tomb rows) nearest to z. */
+function nearestCrossAisle(z: number) {
+  const aisles = [-2.6, -6.25, -9.75, -13.25, -16.75, -20.25, -23.75, -27.4];
+  return aisles.reduce((best, a) => (Math.abs(a - z) < Math.abs(best - z) ? a : best));
 }
 
 function path(m: Maze, from: Cell, to: Cell): Cell[] {

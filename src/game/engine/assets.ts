@@ -39,10 +39,11 @@ export class Assets {
   }
 
   /** A sculpted, skinned mesh: the first-person hand or the Listener (tools/make_hand.py, tools/make_listener.py). */
-  async skinnedData(which: 'hand' | 'listener'): Promise<SkinnedData> {
+  async skinnedData(which: 'hand' | 'listener' | 'hushman'): Promise<SkinnedData> {
     const files = {
       hand: { bin: require('../../../assets/game/hand/hand.bin'), json: require('../../../assets/game/hand/hand.json') },
       listener: { bin: require('../../../assets/game/listener/listener.bin'), json: require('../../../assets/game/listener/listener.json') },
+      hushman: { bin: require('../../../assets/game/hushman/hushman.bin'), json: require('../../../assets/game/hushman/hushman.json') },
     }[which];
     const asset = Asset.fromModule(files.bin);
     await asset.downloadAsync();

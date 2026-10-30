@@ -4,6 +4,8 @@
 export const DECALS = {
   scratches: require('../../../assets/game/decals/lid_scratches.png'),
   cracks: require('../../../assets/game/decals/lid_cracks.png'),
+  fog: require('../../../assets/game/decals/fog.png'),
+  mask: require('../../../assets/game/hushman/mask.png'),
 };
 
 export const SOUNDS = {
@@ -34,6 +36,13 @@ export const SOUNDS = {
   listener_breath_loop: require('../../../assets/game/audio/listener_breath_loop.mp3'),
   listener_shriek: require('../../../assets/game/audio/listener_shriek.mp3'),
   listener_drag: require('../../../assets/game/audio/listener_drag.mp3'),
+  // the necropolis
+  hushman_chant_loop: require('../../../assets/game/audio/hushman_chant_loop.mp3'),
+  hushman_alert: require('../../../assets/game/audio/hushman_alert.mp3'),
+  water_step_0: require('../../../assets/game/audio/water_step_0.mp3'),
+  water_step_1: require('../../../assets/game/audio/water_step_1.mp3'),
+  water_step_2: require('../../../assets/game/audio/water_step_2.mp3'),
+  lantern_creak: require('../../../assets/game/audio/lantern_creak.mp3'),
   // recorded foley (CC0, see CREDITS.md)
   dig_0: require('../../../assets/game/audio/dig_0.mp3'),
   dig_1: require('../../../assets/game/audio/dig_1.mp3'),

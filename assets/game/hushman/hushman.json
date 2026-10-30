@@ -1,0 +1,94 @@
+{
+ "bones": [
+  {
+   "name": "root",
+   "parent": -1,
+   "pos": [
+    0.0,
+    0.95,
+    0.0
+   ]
+  },
+  {
+   "name": "spine",
+   "parent": 0,
+   "pos": [
+    0.0,
+    1.2,
+    0.0
+   ]
+  },
+  {
+   "name": "chest",
+   "parent": 1,
+   "pos": [
+    0.0,
+    1.42,
+    0.0
+   ]
+  },
+  {
+   "name": "head",
+   "parent": 2,
+   "pos": [
+    0.0,
+    1.62,
+    -0.02
+   ]
+  },
+  {
+   "name": "upperArmL",
+   "parent": 2,
+   "pos": [
+    0.2,
+    1.47,
+    0.0
+   ]
+  },
+  {
+   "name": "forearmL",
+   "parent": 4,
+   "pos": [
+    0.24,
+    1.18,
+    -0.04
+   ]
+  },
+  {
+   "name": "handL",
+   "parent": 5,
+   "pos": [
+    0.25,
+    0.95,
+    -0.1
+   ]
+  },
+  {
+   "name": "upperArmR",
+   "parent": 2,
+   "pos": [
+    -0.2,
+    1.47,
+    0.0
+   ]
+  },
+  {
+   "name": "forearmR",
+   "parent": 7,
+   "pos": [
+    -0.24,
+    1.18,
+    -0.04
+   ]
+  },
+  {
+   "name": "handR",
+   "parent": 8,
+   "pos": [
+    -0.25,
+    0.95,
+    -0.1
+   ]
+  }
+ ]
+}

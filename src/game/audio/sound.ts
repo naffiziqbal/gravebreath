@@ -2,7 +2,7 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { SOUNDS, type SoundName } from '../engine/media';
 
-const LOOPS = ['ambience_crypt_loop', 'breath_calm_loop', 'breath_panic_loop', 'heartbeat', 'match_burn_loop', 'wind_loop', 'dig_loop', 'listener_breath_loop'] as const;
+const LOOPS = ['ambience_crypt_loop', 'breath_calm_loop', 'breath_panic_loop', 'heartbeat', 'match_burn_loop', 'wind_loop', 'dig_loop', 'listener_breath_loop', 'hushman_chant_loop'] as const;
 export type LoopName = (typeof LOOPS)[number];
 
 export class Sound {
@@ -66,7 +66,7 @@ export class Sound {
   private lastVariant = new Map<string, number>();
 
   /** Play one of the numbered variants `${prefix}_0`, `${prefix}_1`, …, never the same one twice running. */
-  playVariant(prefix: 'step_stone' | 'step_dirt' | 'dig' | 'lid_creak' | 'listener_step', volume = 1) {
+  playVariant(prefix: 'step_stone' | 'step_dirt' | 'dig' | 'lid_creak' | 'listener_step' | 'water_step', volume = 1) {
     const options = (Object.keys(SOUNDS) as SoundName[]).filter((n) => n.startsWith(`${prefix}_`) && /_\d+$/.test(n));
     if (!options.length) return;
     let i = Math.floor(Math.random() * options.length);

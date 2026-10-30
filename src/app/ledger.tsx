@@ -18,7 +18,7 @@ export default function Ledger() {
           {meta.victims.map((v, i) => (
             <Text key={i} style={styles.name}>
               {v.name} — {v.year}
-              <Text style={v.fate === 'escaped' ? styles.escaped : styles.dim}>   {v.fate === 'escaped' ? (v.layer >= 4 ? 'climbed the bone stair' : 'reached the catacombs') : v.fate === 'taken' ? 'taken in the catacombs' : v.layer >= 3 ? 'suffocated in the catacombs' : 'suffocated'}</Text>
+              <Text style={v.fate === 'escaped' ? styles.escaped : styles.dim}>   {v.fate === 'escaped' ? (v.layer >= 5 ? 'climbed out of the chapel' : v.layer >= 4 ? 'climbed the bone stair' : 'reached the catacombs') : v.fate === 'taken' ? (v.layer >= 4 ? 'taken by the Hushmen' : 'taken in the catacombs') : v.layer >= 4 ? 'suffocated among the tombs' : v.layer >= 3 ? 'suffocated in the catacombs' : 'suffocated'}</Text>
             </Text>
           ))}
           <Text style={[styles.name, styles.you]}>You — tonight</Text>

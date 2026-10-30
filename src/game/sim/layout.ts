@@ -81,8 +81,8 @@ export function generateLayout(seed: number, foundClues: readonly string[]): Lay
   const rng = createRng(seed);
   const act = actFor(foundClues.length);
   const templates = [...rng.shuffle(CRYPT_KIT).slice(0, 3), LEDGER_ALCOVE];
-  // catacomb clues ('cat-') belong to layer 3 only
-  let clues = rng.shuffle(cluesForAct(act, foundClues).filter((c) => c.kind !== 'lid' && !c.id.startsWith('cat-')));
+  // catacomb ('cat-') and necropolis ('nec-') clues belong to their own layers
+  let clues = rng.shuffle(cluesForAct(act, foundClues).filter((c) => c.kind !== 'lid' && !c.id.startsWith('cat-') && !c.id.startsWith('nec-')));
   const takeClue = (kind?: string) => {
     const i = clues.findIndex((c) => !kind || c.kind === kind);
     if (i < 0) return undefined;

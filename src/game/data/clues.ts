@@ -28,6 +28,11 @@ export const CLUES: Clue[] = [
   { id: 'cat-names', kind: 'gravestone', act: 1, title: 'Names on the femurs', text: 'Every bone in this wall has a name scratched into it. Some of the names are from the ledger.\nOne bone is blank, and waiting.' },
   { id: 'cat-map', kind: 'item', act: 1, title: 'Map on a scrap of shroud', text: 'A rough map in charcoal. Tunnels, dead ends, and one mark: a stair made of bones.\n"The way up the Order never filled in."' },
   { id: 'cat-feed', kind: 'gravestone', act: 2, title: 'Carving above an arch', text: 'WHAT WE FEED STAYS BELOW.\nWHAT WE STARVE COMES UP.' },
+  // the necropolis: the Order's own people, and the bells
+  { id: 'nec-oath', kind: 'ledger', act: 1, title: 'Lantern-bearer\'s oath', text: '"I carry the light so the deep may see who is fed. I speak no name aloud. I keep my hand upon my mouth."' },
+  { id: 'nec-roster', kind: 'item', act: 1, title: 'Roster of the Order', text: 'Twelve names in two columns. One is scratched out so hard the paper tore: T. V.\nBeside it, in another hand: "Buried first. Still writing."' },
+  { id: 'nec-chapel', kind: 'gravestone', act: 2, title: 'Plaque at the chapel gate', text: 'THE WATER RISES WHEN THE DEEP IS HUNGRY.\nIt has reached the third step.' },
+  { id: 'nec-bells', kind: 'ledger', act: 2, title: 'Bell-ringer\'s note', text: 'If one ever climbs past the chapel, ring nothing. The bells call the whole Order.' },
   { id: 'ledger-page-final', kind: 'ledger', act: 3, title: 'The first page', text: 'Before Elias, before Ruth, one name in a different ink: the undertaker\'s own.\nThe handwriting matches the scratches on every lid.' },
 ];
 

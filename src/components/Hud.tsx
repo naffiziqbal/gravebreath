@@ -5,6 +5,7 @@ import type { Game } from '../game/Game';
 import { useGame } from '../game/store';
 import { blood, bone, fonts } from '../theme';
 import { ActionPad } from './ActionPad';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export function Hud({ game }: { game: RefObject<Game | null> }) {
   const hud = useGame((s) => s.hud);
@@ -28,7 +29,8 @@ export function Hud({ game }: { game: RefObject<Game | null> }) {
         <View style={[styles.air, { width: `${Math.round(hud.air * 100)}%`, backgroundColor: hud.air < 0.3 ? blood : 'rgba(220,214,204,0.55)' }]} />
       </View>
       {hud.room && <Text style={styles.room} pointerEvents="none">{hud.room}</Text>}
-      {hud.noise !== null && <NoiseMeter level={hud.noise} hunted={hud.hunted} />}
+      {hud.noise !== null && <NoiseMeter level={hud.noise} hunted={hud.hunted} huntedLabel={hud.phase === 'necropolis' ? 'THEY SEE YOU' : 'IT HEARS YOU'} />}
+      {hud.seen !== null && <SeenMeter level={hud.seen} hunted={hud.hunted} />}
       {hud.debug && <Text style={styles.debug} pointerEvents="none">{hud.debug}</Text>}
       {subtitle && <Text style={styles.subtitle} pointerEvents="none">{subtitle}</Text>}
 
@@ -54,12 +56,23 @@ export function Hud({ game }: { game: RefObject<Game | null> }) {
   );
 }
 
+/** How close a Hushman is to spotting you: an eye that opens as the bar fills; red during a chase. */
+function SeenMeter({ level, hunted }: { level: number; hunted: boolean }) {
+  const color = hunted ? blood : level > 0.5 ? '#e0a050' : 'rgba(228,216,196,0.7)';
+  return (
+    <View style={styles.seen} pointerEvents="none">
+      <MaterialCommunityIcons name={hunted || level > 0.05 ? 'eye' : 'eye-off-outline'} size={16} color={color} />
+      <View style={styles.seenBar}><View style={[styles.seenFill, { width: `${Math.round(level * 100)}%`, backgroundColor: color }]} /></View>
+    </View>
+  );
+}
+
 /** How far away you can be heard. Five bars; red when the Listener is coming. */
-function NoiseMeter({ level, hunted }: { level: number; hunted: boolean }) {
+function NoiseMeter({ level, hunted, huntedLabel }: { level: number; hunted: boolean; huntedLabel: string }) {
   const bars = [0.1, 0.25, 0.45, 0.7, 0.95];
   return (
     <View style={styles.noise} pointerEvents="none">
-      <Text style={[styles.noiseLabel, hunted && { color: blood }]}>{hunted ? 'IT HEARS YOU' : level === 0 ? 'SILENT' : 'NOISE'}</Text>
+      <Text style={[styles.noiseLabel, hunted && { color: blood }]}>{hunted ? huntedLabel : level === 0 ? 'SILENT' : 'NOISE'}</Text>
       <View style={styles.noiseBars}>
         {bars.map((t, i) => (
           <View key={i} style={[styles.noiseBar, { height: 5 + i * 3 }, level >= t && { backgroundColor: hunted ? blood : 'rgba(228,216,196,0.7)' }]} />
@@ -79,6 +92,9 @@ const styles = StyleSheet.create({
   noiseLabel: { color: 'rgba(228,216,196,0.5)', fontSize: 9, letterSpacing: 2, marginBottom: 3 },
   noiseBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
   noiseBar: { width: 5, borderRadius: 1, backgroundColor: 'rgba(228,216,196,0.15)' },
+  seen: { position: 'absolute', top: 44, left: '50%', marginLeft: 46, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  seenBar: { width: 46, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },
+  seenFill: { height: 3 },
   debug: { position: 'absolute', top: 8, left: 12, color: 'rgba(255,255,255,0.4)', fontSize: 10 },
   subtitle: { position: 'absolute', bottom: 34, left: 80, right: 290, textAlign: 'center', color: blood, fontFamily: fonts.creepster, fontSize: 24, textShadowColor: '#000', textShadowRadius: 6, textShadowOffset: { width: 0, height: 2 } },
   promptWrap: { position: 'absolute', top: '58%', alignSelf: 'center', alignItems: 'center' },

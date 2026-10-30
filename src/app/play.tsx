@@ -39,12 +39,15 @@ export default function Play() {
       )}
       {end && (
         <View style={[styles.overlay, styles.endBg]}>
-          <Text style={styles.endTitle}>{end.fate === 'escaped' ? 'You climb toward the cold air…' : end.fate === 'taken' ? 'Something found you in the dark.' : 'Your breath runs out.'}</Text>
+          <Text style={styles.endTitle}>
+            {end.fate === 'escaped' ? (end.layer >= 5 ? 'You climb toward the bells…' : 'You climb toward the cold air…')
+              : end.fate === 'taken' ? (end.layer >= 4 ? 'A lantern finds you.' : 'Something found you in the dark.') : 'Your breath runs out.'}
+          </Text>
           <Text style={styles.endName}>{end.victim}</Text>
           <Text style={styles.endLine}>
             {end.fate === 'escaped'
-              ? 'You climbed the bone stair. The necropolis above is still being dug.'
-              : end.fate === 'taken' ? 'The Listener drags another body into the bones.' : 'Another name for the ledger.'}
+              ? (end.layer >= 5 ? 'You climbed out of the flooded chapel. The surface is still being dug.' : 'You climbed the bone stair. The necropolis above is still being dug.')
+              : end.fate === 'taken' ? (end.layer >= 4 ? 'The Hushmen carry you back to the ledger.' : 'The Listener drags another body into the bones.') : 'Another name for the ledger.'}
           </Text>
           <Text style={styles.endStats}>
             {end.newClues.length} new clue{end.newClues.length === 1 ? '' : 's'} · {end.saved} saved · {end.abandoned} left behind · {useGame.getState().meta.clues.length}/{CLUES.length} clues in the ledger
