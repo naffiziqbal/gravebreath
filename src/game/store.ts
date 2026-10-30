@@ -4,6 +4,7 @@ import type { Clue } from './data/clues';
 import type { Meta } from './sim/meta';
 import type { Ending } from './sim/endings';
 import { loadMeta, saveMeta } from './save';
+import { loadSettings, saveSettings, type Settings } from './settings';
 
 export type Hud = {
   phase: 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'surface' | 'over';
@@ -33,6 +34,8 @@ type Store = {
   end: RunEnd | null;
   choices: Ending[] | null; // at the ledger: the endings on offer (pauses the run)
   chosen: Ending | null; // what the player picked; GameView hands it to the game
+  paused: boolean; // the pause menu is open
+  settings: Settings;
   meta: Meta;
   setHud(h: Hud): void;
   say(text: string | null): void;
@@ -40,6 +43,8 @@ type Store = {
   finish(e: RunEnd, meta: Meta): void;
   choose(c: Ending[] | null): void;
   pick(e: Ending): void;
+  setPaused(p: boolean): void;
+  updateSettings(s: Partial<Settings>): void;
   reset(): void;
 };
 
@@ -52,6 +57,8 @@ export const useGame = create<Store>((set) => ({
   end: null,
   choices: null,
   chosen: null,
+  paused: false,
+  settings: loadSettings(),
   meta: loadMeta(),
   setHud: (hud) => set({ hud }),
   say: (subtitle) => set({ subtitle }),
@@ -62,5 +69,7 @@ export const useGame = create<Store>((set) => ({
   },
   choose: (choices) => set({ choices }),
   pick: (chosen) => set({ chosen, choices: null }),
-  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null, choices: null, chosen: null }),
+  setPaused: (paused) => set({ paused }),
+  updateSettings: (s) => set((st) => { const settings = { ...st.settings, ...s }; saveSettings(settings); return { settings }; }),
+  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null, choices: null, chosen: null, paused: false }),
 }));

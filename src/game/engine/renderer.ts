@@ -64,6 +64,9 @@ export class Renderer {
   readonly height: number;
   scale: number;
   private maxScale: number;
+  /** the world pass of the last frame (renderer.info is reset by every render call, so it is copied here) */
+  readonly stats = { calls: 0, triangles: 0 };
+  private minScale: number = RENDER.minScale;
 
   constructor(readonly gl: GL) {
     this.width = gl.drawingBufferWidth;
@@ -111,6 +114,8 @@ export class Renderer {
     u.uFade.value = p.fade; u.uFlash.value = p.flash; u.uTime.value = time;
     this.three.setRenderTarget(this.target);
     this.three.render(scene, camera);
+    this.stats.calls = this.three.info.render.calls;
+    this.stats.triangles = this.three.info.render.triangles;
     if (overlay) {
       // first-person hands: drawn over the world with fresh depth, so they never sink into walls
       this.three.autoClear = false;
@@ -125,10 +130,17 @@ export class Renderer {
 
   /** Dynamic resolution: render smaller when the frame rate drops, back up when there is headroom. */
   setScale(s: number) {
-    const next = Math.max(RENDER.minScale, Math.min(this.maxScale, s));
+    const next = Math.max(this.minScale, Math.min(this.maxScale, s));
     if (Math.abs(next - this.scale) < 0.01) return;
     this.scale = next;
     this.target.setSize(Math.round(this.width * next), Math.round(this.height * next));
+  }
+
+  /** Graphics quality: the highest internal resolution allowed (never narrower than minWidth pixels) and the floor. */
+  setQualityLimits(maxScale: number, minWidth: number, minScale: number) {
+    this.maxScale = Math.min(1, Math.max(maxScale, minWidth / this.width));
+    this.minScale = Math.min(minScale, this.maxScale);
+    this.setScale(this.maxScale);
   }
 
   dispose() {

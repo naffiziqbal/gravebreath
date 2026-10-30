@@ -6,9 +6,11 @@ import { Platform, StyleSheet, Text, View, type GestureResponderEvent, type Layo
 import { Game, type DebugStart } from '../game/Game';
 import type { GL } from '../game/engine/assets';
 import { useGame } from '../game/store';
+import type { Settings } from '../game/settings';
 import { Hud } from './Hud';
 import { AUTOPILOT, runAutopilot } from '../game/dev/autopilot';
 import { runDirector } from '../game/dev/director';
+import { runBench } from '../game/dev/bench';
 import { KEYS, useDesktopControls } from './useDesktopControls';
 import { ash, bone, fonts } from '../theme';
 
@@ -27,6 +29,8 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
   const { desktop, locked } = useDesktopControls(game, paused);
   const loading = useGame((s) => s.hud.phase === 'loading');
   const ended = useGame((s) => !!s.end);
+  const settings = useGame((s) => s.settings);
+  useEffect(() => { game.current?.applySettings(withDebug(settings, debug)); }, [settings, debug]);
   const chosen = useGame((s) => s.chosen);
   useEffect(() => { if (chosen) game.current?.chooseEnding(chosen); }, [chosen]);
 
@@ -37,7 +41,7 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
       say: (t) => useGame.getState().say(t),
       clue: (c) => useGame.getState().showClue(c),
       haptic: (k) => {
-        if (Platform.OS === 'web') return;
+        if (Platform.OS === 'web' || !useGame.getState().settings.vibration) return;
         if (k === 'heavy') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         else if (k === 'light') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
@@ -46,11 +50,13 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
       choose: (c) => useGame.getState().choose(c),
     }, debug);
     game.current = g;
+    g.applySettings(withDebug(useGame.getState().settings, debug));
     try {
       await g.init();
       g.start();
       if (AUTOPILOT) runAutopilot(g);
       if (__DEV__ && debug?.autoplay) runDirector(g);
+      if (__DEV__ && debug?.bench) runBench(g);
     } catch (e) {
       console.error('game failed to start', e);
     }
@@ -120,12 +126,17 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
         <View style={styles.clickToLook} pointerEvents="none">
           <Text style={styles.clickTitle}>Click to look around</Text>
           <Text style={styles.clickKeys}>
-            W A S D  move  ·  Shift  run  ·  Mouse  look{'\n'}E / Space / Left click  push, dig, take, read  ·  F  match  ·  R  phone light{'\n'}Q / Right click  hold breath  ·  C  calm down  ·  Esc  free the mouse
+            W A S D  move  ·  Shift  run  ·  Mouse  look{'\n'}E / Space / Left click  push, dig, take, read  ·  F  match  ·  R  phone light{'\n'}Q / Right click  hold breath  ·  C  calm down  ·  Esc / P  pause
           </Text>
         </View>
       )}
     </View>
   );
+}
+
+/** Dev: /play?quality=low|medium|high forces a graphics preset over the saved one (the benchmark uses it). */
+function withDebug(s: Settings, debug?: DebugStart): Settings {
+  return __DEV__ && debug?.quality ? { ...s, quality: debug.quality } : s;
 }
 
 function clampLen(x: number, y: number): [number, number] {

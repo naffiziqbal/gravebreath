@@ -25,7 +25,7 @@ export function useDesktopControls(game: RefObject<Game | null>, paused: boolean
     const g = () => game.current;
     const blocked = () => {
       const s = useGame.getState();
-      return !!(s.clue || s.choices || s.end);
+      return !!(s.clue || s.choices || s.end || s.paused);
     };
     const move = () => {
       if (blocked()) { g()?.setInput({ moveX: 0, moveY: 0 }); return; }
@@ -49,6 +49,7 @@ export function useDesktopControls(game: RefObject<Game | null>, paused: boolean
         if (code === 'KeyE' || code === 'Space' || code === 'Enter' || code === 'Escape') s.showClue(null);
         return;
       }
+      if (code === 'KeyP' && !s.end && !s.choices) { s.setPaused(!s.paused); return; }
       if (blocked()) return;
       if (code === 'KeyF') g()?.lightMatch();
       if (code === 'KeyR') g()?.usePhone();
@@ -80,9 +81,13 @@ export function useDesktopControls(game: RefObject<Game | null>, paused: boolean
       if (document.pointerLockElement !== document.body || blocked()) return;
       g()?.look(e.movementX * MOUSE_SCALE, e.movementY * MOUSE_SCALE);
     };
+    let wasLocked = false;
     const onLockChange = () => {
       const on = document.pointerLockElement === document.body;
       setLocked(on);
+      // Esc frees the mouse mid-run: treat it as pausing, like most games on a computer
+      if (wasLocked && !on && !blocked() && useGame.getState().hud.phase !== 'loading') useGame.getState().setPaused(true);
+      wasLocked = on;
       if (!on) { for (const k of [...held]) if (k.startsWith('Mouse')) held.delete(k); hold(); }
     };
     const noMenu = (e: MouseEvent) => { if (document.pointerLockElement) e.preventDefault(); };

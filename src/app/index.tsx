@@ -25,6 +25,11 @@ export default function Title() {
             <Text style={styles.btnText}>The ledger · {meta.victims.length} names</Text>
           </Pressable>
         )}
+        <View style={styles.small}>
+          <Pressable onPress={() => router.push('/settings')} hitSlop={8}><Text style={styles.smallText}>Settings</Text></Pressable>
+          <Text style={styles.smallText}>·</Text>
+          <Pressable onPress={() => router.push('/credits')} hitSlop={8}><Text style={styles.smallText}>Credits</Text></Pressable>
+        </View>
       </View>
       <Text style={styles.headphones}>Play with headphones, in the dark.</Text>
       <Text style={styles.studio}>NEXUS BENDERS</Text>
@@ -41,6 +46,8 @@ const styles = StyleSheet.create({
   secondary: { borderColor: 'rgba(228,216,196,0.25)' },
   pressed: { backgroundColor: 'rgba(163,18,14,0.25)' },
   btnText: { color: bone, fontFamily: fonts.creepster, fontSize: 24, letterSpacing: 1 },
+  small: { flexDirection: 'row', gap: 14, marginTop: 6 },
+  smallText: { color: ash, fontSize: 14, letterSpacing: 1 },
   headphones: { position: 'absolute', bottom: 34, color: ash, fontSize: 12, letterSpacing: 1 },
   studio: { position: 'absolute', bottom: 14, color: 'rgba(143,133,122,0.6)', fontSize: 10, letterSpacing: 3 },
 });

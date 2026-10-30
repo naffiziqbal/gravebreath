@@ -24,6 +24,7 @@ import { recordRun, unlocks, victimName, type Meta } from './sim/meta';
 import { CLUES, type Clue } from './data/clues';
 import { DIG, PLAYER, RENDER } from './config';
 import type { Hud, RunEnd } from './store';
+import { QUALITY, type Quality, type Settings } from './settings';
 
 export type GameEvents = {
   hud(h: Hud): void;
@@ -36,7 +37,7 @@ export type GameEvents = {
 };
 
 /** Dev-only shortcuts for testing a layer directly (set from the play screen's URL in dev builds). */
-export type DebugStart = { layer?: number; match?: boolean; phone?: boolean; yaw?: number; listenerNear?: boolean; seed?: number; autoplay?: boolean };
+export type DebugStart = { layer?: number; match?: boolean; phone?: boolean; yaw?: number; listenerNear?: boolean; seed?: number; autoplay?: boolean; bench?: boolean; quality?: Quality };
 
 export type Input = { moveX: number; moveY: number; calming: boolean; holdingBreath: boolean; interact: boolean };
 
@@ -118,6 +119,9 @@ export class Game {
   private soil: { p: THREE.Vector3; v: THREE.Vector3; r: THREE.Euler; spin: THREE.Vector3; s: number; landed: boolean }[] = [];
   private soilSpawn = 0;
   private hands: Hands;
+  private lookScale = 1; // player settings, see applySettings
+  private invertY = false;
+  private quality: Quality = 'medium';
 
   constructor(gl: GL, private meta: Meta, private events: GameEvents, private debug: DebugStart = {}) {
     this.renderer = new Renderer(gl);
@@ -228,6 +232,29 @@ export class Game {
     this.sound.play('phone_click', 0.6);
   }
 
+  /** The player's settings: volume, look, and graphics quality (resolution, bone distance, rain, lantern beams). */
+  applySettings(s: Settings) {
+    this.sound.setMaster(s.volume);
+    this.lookScale = s.sensitivity;
+    this.invertY = s.invertY;
+    if (s.quality !== this.quality || !this.qualityApplied) {
+      this.quality = s.quality;
+      this.qualityApplied = true;
+      const q = QUALITY[s.quality];
+      this.renderer.setQualityLimits(q.maxScale, q.minWidth, q.minScale);
+      this.applyQualityToLevels();
+    }
+  }
+  private qualityApplied = false;
+
+  /** Parts of the quality setting that live in the levels: the Hushmen's lantern beams (spotlights are the most
+   *  expensive lights on a phone; their sight is simulated, so gameplay is unchanged) and how much rain falls. */
+  private applyQualityToLevels() {
+    const q = QUALITY[this.quality];
+    for (const level of [this.necropolis, this.surface]) for (const rig of level?.hushmen ?? []) rig.beam.visible = q.beams;
+    if (this.surface) this.surface.rain.geometry.setDrawRange(0, Math.floor(RAIN.drops * q.rain) * 2);
+  }
+
   // ---------------------------------------------------------------- phases
   private get walking() { return this.phase === 'crypt' || this.phase === 'catacombs' || this.phase === 'necropolis' || this.phase === 'surface'; }
   /** Where Hushmen walk: the necropolis, then the graveyard. */
@@ -302,6 +329,7 @@ export class Game {
       this.attach(n.scene);
       this.renderer.three.compile(n.scene, this.camera);
       this.hushmen = n.layout.routes.map((route, i) => spawnHushman(route, i * 2));
+      this.applyQualityToLevels();
       this.sound.play('ghost_swell', 0.8);
       this.enterLevel(n, 'necropolis', 'The necropolis. Lanterns move between the tombs. Keep to the dark.');
       this.surfaceReady = buildSurface(this.assets, generateSurface(this.run.seed));
@@ -320,6 +348,7 @@ export class Game {
       this.attach(s.scene);
       this.renderer.three.compile(s.scene, this.camera);
       this.hushmen = s.layout.routes.map((route, i) => spawnHushman(route, i));
+      this.applyQualityToLevels();
       this.sound.play('gasp', 0.9); // the first real breath
       this.sound.play('thunder', 0.5);
       this.enterLevel(s, 'surface', 'Rain. Air. The graveyard above Vael. Lanterns wait by the church.');
@@ -462,14 +491,14 @@ export class Game {
     for (const b of c.bones) {
       const cell = b.userData.cell as Cell | undefined;
       const s = b.boundingSphere!;
-      b.visible = (!cell || !this.sight || this.sight.has(cell)) && s.center.distanceTo(cam) - s.radius < 8;
+      b.visible = (!cell || !this.sight || this.sight.has(cell)) && s.center.distanceTo(cam) - s.radius < QUALITY[this.quality].boneCull;
     }
   }
 
   private updateLook() {
-    const s = PLAYER.lookSensitivity;
+    const s = PLAYER.lookSensitivity * this.lookScale;
     this.yaw -= this.lookDX * s;
-    this.pitch -= this.lookDY * s;
+    this.pitch -= this.lookDY * s * (this.invertY ? -1 : 1);
     this.lookDX = 0; this.lookDY = 0;
     if (this.phase === 'coffin') {
       // lying on your back: you can only turn your head so far

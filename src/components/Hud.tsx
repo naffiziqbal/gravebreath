@@ -1,6 +1,6 @@
 // On-screen controls and readouts. Kept sparse: the darkness and the breathing are the real HUD.
 import { useEffect, type RefObject } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Game } from '../game/Game';
 import { useGame } from '../game/store';
 import { blood, bone, fonts } from '../theme';
@@ -10,7 +10,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeof KEYS }) {
   const hud = useGame((s) => s.hud);
-  const subtitle = useGame((s) => s.subtitle);
+  const subtitle = useGame((s) => (s.settings.subtitles ? s.subtitle : null));
   const g = () => game.current;
   // if the button disappears mid-hold, its release never fires; let go for the player
   useEffect(() => {
@@ -33,6 +33,9 @@ export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeo
       {hud.noise !== null && <NoiseMeter level={hud.noise} hunted={hud.hunted} huntedLabel={hud.phase === 'necropolis' || hud.phase === 'surface' ? 'THEY SEE YOU' : 'IT HEARS YOU'} />}
       {hud.seen !== null && <SeenMeter level={hud.seen} hunted={hud.hunted} />}
       {hud.debug && <Text style={styles.debug} pointerEvents="none">{hud.debug}</Text>}
+      <Pressable onPress={() => useGame.getState().setPaused(true)} style={styles.pause} hitSlop={10} accessibilityRole="button" accessibilityLabel="Pause">
+        <MaterialCommunityIcons name="pause" size={20} color="rgba(228,216,196,0.75)" />
+      </Pressable>
       {subtitle && <Text style={styles.subtitle} pointerEvents="none">{subtitle}</Text>}
 
       {hud.prompt && (
@@ -96,7 +99,8 @@ const styles = StyleSheet.create({
   seen: { position: 'absolute', top: 44, left: '50%', marginLeft: 46, flexDirection: 'row', alignItems: 'center', gap: 5 },
   seenBar: { width: 46, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },
   seenFill: { height: 3 },
-  debug: { position: 'absolute', top: 8, left: 12, color: 'rgba(255,255,255,0.4)', fontSize: 10 },
+  pause: { position: 'absolute', top: 12, left: 14, width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(12,8,7,0.45)', borderWidth: 1, borderColor: 'rgba(228,216,196,0.18)' },
+  debug: { position: 'absolute', top: 8, left: 62, color: 'rgba(255,255,255,0.4)', fontSize: 10 },
   subtitle: { position: 'absolute', bottom: 34, left: 80, right: 290, textAlign: 'center', color: blood, fontFamily: fonts.creepster, fontSize: 24, textShadowColor: '#000', textShadowRadius: 6, textShadowOffset: { width: 0, height: 2 } },
   promptWrap: { position: 'absolute', top: '58%', alignSelf: 'center', alignItems: 'center' },
   prompt: { color: bone, fontSize: 15, letterSpacing: 1, textShadowColor: '#000', textShadowRadius: 4 },

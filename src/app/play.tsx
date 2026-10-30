@@ -1,10 +1,11 @@
 // A run: the game view, the clue reader (pauses the run), and the screen you see when it ends.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useKeepAwake } from 'expo-keep-awake';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GameView } from '../components/GameView';
 import { Epilogue } from '../components/Epilogue';
+import { SettingsPanel } from '../components/SettingsPanel';
 import { useGame } from '../game/store';
 import { CLUES } from '../game/data/clues';
 import { ENDINGS } from '../game/sim/endings';
@@ -21,8 +22,26 @@ export default function Play() {
   const [runKey, setRunKey] = useState(0);
   const [truthRead, setTruthRead] = useState(false);
   const [storyRead, setStoryRead] = useState(false);
+  const paused = useGame((s) => s.paused);
+  const setPaused = useGame((s) => s.setPaused);
+
+  // Android's back button opens the pause menu (or closes it) instead of leaving mid-run; leaving the app pauses too
+  useEffect(() => {
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      const s = useGame.getState();
+      if (s.end) return false; // on the end screen, back leaves as usual
+      if (s.clue) { s.showClue(null); return true; }
+      if (!s.choices) s.setPaused(!s.paused);
+      return true;
+    });
+    const app = AppState.addEventListener('change', (st) => {
+      const s = useGame.getState();
+      if (st !== 'active' && !s.end && !s.choices && s.hud.phase !== 'loading') s.setPaused(true);
+    });
+    return () => { back.remove(); app.remove(); };
+  }, []);
   // dev builds only: /play?layer=3&match=1&yaw=1.5 starts a run inside a layer for testing
-  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string; frame?: string }>();
+  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string; frame?: string; bench?: string; quality?: string }>();
   // dev only: /play?frame=1080x1920 renders at a fixed pixel size (trailer shots), whatever the window is
   const frame = __DEV__ && params.frame ? params.frame.split('x').map(Number) : null;
   const ratio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -30,13 +49,15 @@ export default function Play() {
     ? {
       layer: params.layer ? Number(params.layer) : undefined, match: params.match === '1', phone: params.phone === '1',
       yaw: params.yaw ? Number(params.yaw) : undefined, listenerNear: params.listener === '1',
-      seed: params.seed ? Number(params.seed) : undefined, autoplay: params.autoplay === '1',
+      seed: params.seed ? Number(params.seed) : undefined, autoplay: params.autoplay === '1', bench: params.bench === '1',
+      quality: (['low', 'medium', 'high'] as const).find((q) => q === params.quality),
     }
     : undefined;
 
   return (
     <View style={[styles.root, frame && { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: frame[0] / ratio, height: frame[1] / ratio }]}>
-      <GameView key={runKey} paused={!!clue || !!choices} debug={debug} />
+      <GameView key={runKey} paused={!!clue || !!choices || paused} debug={debug} />
+      {paused && !end && <PauseMenu onResume={() => setPaused(false)} onQuit={() => { reset(); router.replace('/'); }} />}
       {clue && (
         <View style={styles.overlay}>
           <View style={styles.paper}>
@@ -110,6 +131,41 @@ export default function Play() {
   );
 }
 
+/** Resume, settings, or leave the run. Mounted only while paused, so it always opens on the main menu. */
+function PauseMenu({ onResume, onQuit }: { onResume(): void; onQuit(): void }) {
+  const [view, setView] = useState<'menu' | 'settings' | 'quit'>('menu');
+  // inside settings or the quit question, Android's back button steps back to the menu first
+  useEffect(() => {
+    if (view === 'menu') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { setView('menu'); return true; });
+    return () => sub.remove();
+  }, [view]);
+  return (
+    <View style={styles.overlay}>
+      {view === 'settings' ? <SettingsPanel onClose={() => setView('menu')} /> : (
+        <View style={styles.pauseBox}>
+          <Text style={styles.endTitle}>{view === 'quit' ? 'Leave this grave?' : 'Paused'}</Text>
+          {view === 'quit' ? (
+            <>
+              <Text style={styles.endLine}>This run will be lost, along with any clues you found in it.</Text>
+              <View style={styles.endButtons}>
+                <Pressable onPress={() => setView('menu')} style={[styles.btn, styles.secondary]}><Text style={styles.btnText}>Stay</Text></Pressable>
+                <Pressable onPress={onQuit} style={styles.btn}><Text style={styles.btnText}>Leave</Text></Pressable>
+              </View>
+            </>
+          ) : (
+            <View style={styles.pauseButtons}>
+              <Pressable onPress={onResume} style={styles.btn}><Text style={styles.btnText}>Resume</Text></Pressable>
+              <Pressable onPress={() => setView('settings')} style={[styles.btn, styles.secondary]}><Text style={styles.btnText}>Settings</Text></Pressable>
+              <Pressable onPress={() => setView('quit')} style={[styles.btn, styles.secondary]}><Text style={styles.btnText}>Quit to title</Text></Pressable>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: 16 },
@@ -129,5 +185,7 @@ const styles = StyleSheet.create({
   choiceTitle: { color: bone, fontFamily: fonts.creepster, fontSize: 24 },
   choiceText: { color: ash, fontSize: 14, marginTop: 6, lineHeight: 20 },
   endingText: { maxWidth: 560, lineHeight: 22 },
+  pauseBox: { alignItems: 'center', maxWidth: 520 },
+  pauseButtons: { marginTop: 22, gap: 12, alignItems: 'stretch', minWidth: 240 },
   btnText: { color: bone, fontFamily: fonts.creepster, fontSize: 22 },
 });

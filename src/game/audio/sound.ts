@@ -9,6 +9,7 @@ export class Sound {
   private players = new Map<SoundName, AudioPlayer>();
   private loopVolume = new Map<LoopName, number>();
   private muted = false;
+  private master = 1; // the player's volume setting
 
   async init() {
     await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
@@ -41,7 +42,7 @@ export class Sound {
     const cur = this.loopVolume.get(name) ?? 0;
     const next = cur + (target - cur) * Math.min(1, dt * rate);
     this.loopVolume.set(name, next);
-    p.volume = this.muted ? 0 : Math.max(0, Math.min(1, next));
+    p.volume = this.muted ? 0 : Math.max(0, Math.min(1, next * this.master));
   }
 
   private rates = new Map<SoundName, number>();
@@ -58,7 +59,7 @@ export class Sound {
   play(name: SoundName, volume = 1) {
     const p = this.players.get(name);
     if (!p || this.muted) return;
-    p.volume = Math.max(0, Math.min(1, volume));
+    p.volume = Math.max(0, Math.min(1, volume * this.master));
     p.seekTo(0).catch(() => {});
     p.play();
   }
@@ -74,6 +75,8 @@ export class Sound {
     this.lastVariant.set(prefix, i);
     this.play(options[i], volume);
   }
+
+  setMaster(v: number) { this.master = Math.max(0, Math.min(1, v)); }
 
   setMuted(m: boolean) {
     this.muted = m;
