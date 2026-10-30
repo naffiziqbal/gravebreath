@@ -89,6 +89,7 @@ export class Game {
   private shriekCooldown = 0;
   private dragTimer = 0;
   private lunge = 0; // seconds since the Listener caught you
+  private listenerDeaf = false; // dev only: the gameplay recorder holds it aside between staged moments
   private fpsAt = 0;
   private fpsFrames = 0;
   private fpsShown = 0;
@@ -516,7 +517,7 @@ export class Game {
     const c = this.catacombs;
     if (!c || !this.listener) return;
     const before = { x: this.listener.x, z: this.listener.z };
-    const r = stepListener(c.layout.maze, this.listener, dt, { x: this.pos.x, z: this.pos.z, noise: this.noise }, this.listenerRng);
+    const r = stepListener(c.layout.maze, this.listener, dt, { x: this.pos.x, z: this.pos.z, noise: __DEV__ && this.listenerDeaf ? 0 : this.noise }, this.listenerRng);
     this.listener = r.state;
     const g = c.listener;
     const vx = r.state.x - before.x, vz = r.state.z - before.z;

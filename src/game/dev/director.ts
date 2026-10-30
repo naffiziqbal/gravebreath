@@ -16,7 +16,7 @@ import { startRecording, type Recording } from './recorder';
 type Internals = {
   phase: string; yaw: number; pitch: number; pos: { x: number; z: number };
   run: { matches: number; matchTime: number; phoneOn: boolean; battery: number; air: number; airMax: number };
-  level: Level | null; catacombs: Catacombs | null; listener: ListenerState | null; focus: LiveInteractable | null;
+  level: Level | null; catacombs: Catacombs | null; listener: ListenerState | null; focus: LiveInteractable | null; listenerDeaf: boolean;
   sound: { play(n: string, v?: number): void; loopVolume: Map<string, number>; rates: Map<string, number> };
 };
 
@@ -56,6 +56,7 @@ class Director {
     if (Math.abs(dp) > 0.002) this.look(0, Math.max(-1.2 * dt, Math.min(1.2 * dt, dp)));
     this.keepLight();
     if (this.leash && this.g.listener) park(this.g, this.leash.maze, this.leash.cell);
+    this.g.listenerDeaf = !!this.leash;
     return dt;
   }
 
@@ -209,6 +210,17 @@ class Director {
           await this.tap();
           if (it.def.type === 'clue') await this.readClueIfShown(); else await this.wait(1.2);
         }
+      }
+      const pocket = level.airPockets.find((a) => Math.abs(a.pos.z - room.z) < room.depth / 2);
+      if (pocket) {
+        await this.walkTo(pocket.pos.x * 0.7, pocket.pos.z + 0.6);
+        await this.walkTo(pocket.pos.x, pocket.pos.z, 0.25);
+        this.pitchGoal = 0.5; // look up into the light falling from the crack
+        await this.wait(2.5);
+        this.game.setInput({ calming: true }); this.log('hold', { calm: true });
+        await this.until(() => this.g.run.air >= this.g.run.airMax * 0.97, 25);
+        this.game.setInput({ calming: false }); this.log('hold', { calm: false });
+        this.pitchGoal = -0.08;
       }
       const front = room.z - room.depth / 2;
       await this.walkTo(0, room.z);
