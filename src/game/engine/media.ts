@@ -6,6 +6,7 @@ export const DECALS = {
   cracks: require('../../../assets/game/decals/lid_cracks.png'),
   fog: require('../../../assets/game/decals/fog.png'),
   mask: require('../../../assets/game/hushman/mask.png'),
+  sky: require('../../../assets/game/sky/night.jpg'), // tools/hdr_to_sky.py
 };
 
 export const SOUNDS = {
@@ -43,6 +44,10 @@ export const SOUNDS = {
   water_step_1: require('../../../assets/game/audio/water_step_1.mp3'),
   water_step_2: require('../../../assets/game/audio/water_step_2.mp3'),
   lantern_creak: require('../../../assets/game/audio/lantern_creak.mp3'),
+  // the surface
+  rain_loop: require('../../../assets/game/audio/rain_loop.mp3'),
+  thunder: require('../../../assets/game/audio/thunder.mp3'),
+  bell_toll: require('../../../assets/game/audio/bell_toll.mp3'),
   // recorded foley (CC0, see CREDITS.md)
   dig_0: require('../../../assets/game/audio/dig_0.mp3'),
   dig_1: require('../../../assets/game/audio/dig_1.mp3'),

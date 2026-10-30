@@ -22,6 +22,8 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
 
   useEffect(() => () => { game.current?.dispose(); game.current = null; }, []);
   useEffect(() => { game.current?.setPaused(paused); }, [paused]);
+  const chosen = useGame((s) => s.chosen);
+  useEffect(() => { if (chosen) game.current?.chooseEnding(chosen); }, [chosen]);
 
   const onContextCreate = async (gl: GL) => {
     const store = useGame.getState();
@@ -36,6 +38,7 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
         else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
       },
       end: (e, meta) => useGame.getState().finish(e, meta),
+      choose: (c) => useGame.getState().choose(c),
     }, debug);
     game.current = g;
     try {

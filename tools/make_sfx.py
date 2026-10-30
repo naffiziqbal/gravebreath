@@ -207,7 +207,26 @@ def necropolis():
     c = creak(0.7) * 0.6 + bp(noise(secs(0.7)), 2500, 6000) * env_exp(secs(0.7), 0.05) * 0.2
     write("lantern_creak", room(c, 1.0, 0.25, 0.2), 0.45)
 
+def surface():
+    """Rain on the graveyard, far thunder, and the church bell of Vael."""
+    n = secs(10.4)
+    hiss = hp(noise(n), 1800) * 0.5 + bp(noise(n), 500, 1800) * 0.35  # the wash of rain on grass and stone
+    hiss *= 1 + 0.12 * np.sin(np.arange(n) / SR * 2 * np.pi * 0.13)
+    for _ in range(1400):  # single drops on stones and leaves
+        i = rng.integers(0, n - 900); f0 = rng.uniform(1500, 5000); tt = np.arange(900) / SR
+        hiss[i:i + 900] += np.sin(2 * np.pi * f0 * tt) * env_exp(900, 0.003) * rng.uniform(0.1, 0.5)
+    write("rain_loop", loopify(lp(hiss, 9000)), 0.55)
+    m = secs(6.0); th = lp(noise(m), 160, 4) * (1 - env_exp(m, 0.25)) * env_exp(m, 1.6)
+    th += lp(noise(m), 900) * env_exp(m, 0.18) * 0.25  # the crack before the roll
+    write("thunder", room(th, 2.5, 0.8, 0.5), 0.8)
+    m = secs(7.0); tt = np.arange(m) / SR; b = np.zeros(m)
+    for ratio, amp, tau in ((0.5, 0.6, 3.5), (1.0, 1.0, 2.6), (1.19, 0.6, 2.0), (1.5, 0.45, 1.6), (2.0, 0.5, 1.2), (2.52, 0.3, 0.8), (3.0, 0.2, 0.6)):
+        b += amp * np.sin(2 * np.pi * 196 * ratio * tt + ratio) * env_exp(m, tau)  # a bell's inharmonic partials
+    b[:secs(0.02)] += bp(noise(secs(0.02)), 800, 4000) * 0.5  # the clapper
+    write("bell_toll", room(b, 3.0, 0.9, 0.35), 0.75)
+
 if __name__ == "__main__":
     import sys
     if "--necropolis" in sys.argv: necropolis()
-    else: main(); necropolis()
+    elif "--surface" in sys.argv: surface()
+    else: main(); necropolis(); surface()

@@ -2,7 +2,7 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { SOUNDS, type SoundName } from '../engine/media';
 
-const LOOPS = ['ambience_crypt_loop', 'breath_calm_loop', 'breath_panic_loop', 'heartbeat', 'match_burn_loop', 'wind_loop', 'dig_loop', 'listener_breath_loop', 'hushman_chant_loop'] as const;
+const LOOPS = ['ambience_crypt_loop', 'breath_calm_loop', 'breath_panic_loop', 'heartbeat', 'match_burn_loop', 'wind_loop', 'dig_loop', 'listener_breath_loop', 'hushman_chant_loop', 'rain_loop'] as const;
 export type LoopName = (typeof LOOPS)[number];
 
 export class Sound {

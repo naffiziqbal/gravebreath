@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newRun, step, strikeMatch, airDrainRate, scare } from './run.ts';
 import { generateLayout, walkwayClear } from './layout.ts';
+import { generateSurface, LECTERN } from './surface.ts';
+import { endingChoices } from './endings.ts';
 import { emptyMeta, recordRun, unlocks, victimName } from './meta.ts';
 import { AIR, LIGHT } from '../config.ts';
 import { cellCentre, distances, generateCatacombs, neighbours, nextToward } from './catacombs.ts';
@@ -228,4 +230,26 @@ test('hidden behind a mausoleum, a Hushman patrols on and loses interest', () =>
   for (let t = 0; t < 30; t += 0.05) { const r = stepHushman(h, 0.05, hidden, wall); h = r.state; chased ||= r.startedChase; }
   assert.equal(chased, false);
   assert.equal(h.mode, 'patrol');
+});
+
+const clearOf = (p: { x: number; z: number }, tombs: { x: number; z: number; w: number; d: number }[], r = 0.4) =>
+  tombs.every((t) => Math.abs(p.x - t.x) > t.w / 2 + r || Math.abs(p.z - t.z) > t.d / 2 + r);
+
+test('surface keeps the spawn, lectern and patrol waypoints clear', () => {
+  for (let seed = 1; seed < 40; seed++) {
+    const s = generateSurface(seed);
+    assert.ok(clearOf(s.spawn, s.tombs));
+    assert.ok(clearOf(LECTERN, s.tombs));
+    for (const route of s.routes) for (const p of route) assert.ok(clearOf(p, s.tombs));
+    assert.ok(s.tombs.some((t) => t.h >= 1.6), 'something tall to hide behind');
+  }
+});
+
+test('surface is deterministic per seed', () => {
+  assert.equal(JSON.stringify(generateSurface(7)), JSON.stringify(generateSurface(7)));
+});
+
+test('the ending choice needs the final ledger page', () => {
+  assert.deepEqual(endingChoices([]), ['rain']);
+  assert.deepEqual(endingChoices(['ledger-page-final']), ['bells', 'undertaker']);
 });

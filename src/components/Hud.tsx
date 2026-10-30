@@ -29,7 +29,7 @@ export function Hud({ game }: { game: RefObject<Game | null> }) {
         <View style={[styles.air, { width: `${Math.round(hud.air * 100)}%`, backgroundColor: hud.air < 0.3 ? blood : 'rgba(220,214,204,0.55)' }]} />
       </View>
       {hud.room && <Text style={styles.room} pointerEvents="none">{hud.room}</Text>}
-      {hud.noise !== null && <NoiseMeter level={hud.noise} hunted={hud.hunted} huntedLabel={hud.phase === 'necropolis' ? 'THEY SEE YOU' : 'IT HEARS YOU'} />}
+      {hud.noise !== null && <NoiseMeter level={hud.noise} hunted={hud.hunted} huntedLabel={hud.phase === 'necropolis' || hud.phase === 'surface' ? 'THEY SEE YOU' : 'IT HEARS YOU'} />}
       {hud.seen !== null && <SeenMeter level={hud.seen} hunted={hud.hunted} />}
       {hud.debug && <Text style={styles.debug} pointerEvents="none">{hud.debug}</Text>}
       {subtitle && <Text style={styles.subtitle} pointerEvents="none">{subtitle}</Text>}

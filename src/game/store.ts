@@ -2,10 +2,11 @@
 import { create } from 'zustand';
 import type { Clue } from './data/clues';
 import type { Meta } from './sim/meta';
+import type { Ending } from './sim/endings';
 import { loadMeta, saveMeta } from './save';
 
 export type Hud = {
-  phase: 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'over';
+  phase: 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'surface' | 'over';
   air: number; // 0..1
   panic: number;
   matches: number;
@@ -23,18 +24,22 @@ export type Hud = {
   debug: string | null; // dev builds only: render resolution and fps
 };
 
-export type RunEnd = { fate: 'suffocated' | 'escaped' | 'taken'; victim: string; layer: number; newClues: string[]; saved: number; abandoned: number };
+export type RunEnd = { fate: 'suffocated' | 'escaped' | 'taken'; victim: string; layer: number; newClues: string[]; saved: number; abandoned: number; ending?: Ending };
 
 type Store = {
   hud: Hud;
   subtitle: string | null;
   clue: Clue | null;
   end: RunEnd | null;
+  choices: Ending[] | null; // at the ledger: the endings on offer (pauses the run)
+  chosen: Ending | null; // what the player picked; GameView hands it to the game
   meta: Meta;
   setHud(h: Hud): void;
   say(text: string | null): void;
   showClue(c: Clue | null): void;
   finish(e: RunEnd, meta: Meta): void;
+  choose(c: Ending[] | null): void;
+  pick(e: Ending): void;
   reset(): void;
 };
 
@@ -45,6 +50,8 @@ export const useGame = create<Store>((set) => ({
   subtitle: null,
   clue: null,
   end: null,
+  choices: null,
+  chosen: null,
   meta: loadMeta(),
   setHud: (hud) => set({ hud }),
   say: (subtitle) => set({ subtitle }),
@@ -53,5 +60,7 @@ export const useGame = create<Store>((set) => ({
     saveMeta(meta);
     set({ end, meta });
   },
-  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null }),
+  choose: (choices) => set({ choices }),
+  pick: (chosen) => set({ chosen, choices: null }),
+  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null, choices: null, chosen: null }),
 }));
