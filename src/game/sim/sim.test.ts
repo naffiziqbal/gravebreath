@@ -5,6 +5,7 @@ import { newRun, step, strikeMatch, airDrainRate, scare } from './run.ts';
 import { generateLayout, walkwayClear } from './layout.ts';
 import { generateSurface, LECTERN } from './surface.ts';
 import { endingChoices } from './endings.ts';
+import { deathLesson } from './lessons.ts';
 import { emptyMeta, recordRun, unlocks, victimName } from './meta.ts';
 import { AIR, LIGHT } from '../config.ts';
 import { cellCentre, distances, generateCatacombs, neighbours, nextToward, sightCells } from './catacombs.ts';
@@ -262,4 +263,13 @@ test('catacomb sight covers neighbours and straight corridors, and skips walled-
   const dist = distances(maze, from);
   for (const c of sight) assert.ok((dist.get(c) ?? Infinity) <= 3, 'only cells reachable through tunnels');
   assert.ok(sight.size < maze.cells.length, 'some of the maze is culled');
+});
+
+test('the death screen names the cause and gives a matching tip', () => {
+  assert.match(deathLesson('suffocated', 1, false).cause ?? '', /coffin/);
+  assert.match(deathLesson('suffocated', 3, false).cause ?? '', /catacombs/);
+  assert.match(deathLesson('taken', 3, false).tip ?? '', /sound/);
+  assert.match(deathLesson('taken', 4, true).cause ?? '', /light/);
+  assert.match(deathLesson('taken', 5, false).tip ?? '', /tall/);
+  assert.deepEqual(deathLesson('escaped', 5, false), {});
 });

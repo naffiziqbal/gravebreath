@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Platform, View } from 'react-native';
+import { MenuAmbience } from '../components/MenuAmbience';
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -17,6 +18,7 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar hidden />
+      <MenuAmbience />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#000' }, animation: 'fade' }} />
     </>
   );

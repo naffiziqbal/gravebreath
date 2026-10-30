@@ -22,9 +22,12 @@ import { createRng, type Rng } from './sim/rng';
 import { airFraction, newRun, scare, step, strikeMatch, togglePhone, type Movement, type RunState } from './sim/run';
 import { recordRun, unlocks, victimName, type Meta } from './sim/meta';
 import { CLUES, type Clue } from './data/clues';
+import { HINTS, type HintId } from './data/hints';
+import { deathLesson } from './sim/lessons';
+import type { RunSnapshot } from './save';
 import { DIG, PLAYER, RENDER } from './config';
 import type { Hud, RunEnd } from './store';
-import { QUALITY, type Quality, type Settings } from './settings';
+import { QUALITY, brightnessGamma, type Quality, type Settings } from './settings';
 
 export type GameEvents = {
   hud(h: Hud): void;
@@ -32,12 +35,17 @@ export type GameEvents = {
   clue(c: Clue): void;
   haptic(kind: 'light' | 'heavy' | 'heartbeat'): void;
   end(e: RunEnd, meta: Meta): void;
+  /** a one-time tip, the first time something matters */
+  hint(id: HintId, text: string): void;
   /** You reached the ledger knowing the truth: the UI shows it and asks which ending (see chooseEnding). */
   choose(choices: Ending[]): void;
 };
 
 /** Dev-only shortcuts for testing a layer directly (set from the play screen's URL in dev builds). */
 export type DebugStart = { layer?: number; match?: boolean; phone?: boolean; yaw?: number; listenerNear?: boolean; seed?: number; autoplay?: boolean; bench?: boolean; quality?: Quality };
+
+/** How a run begins: a shortcut to a layer you've reached before, or a run resumed after the app was closed. */
+export type StartOptions = { layer?: number; resume?: RunSnapshot };
 
 export type Input = { moveX: number; moveY: number; calming: boolean; holdingBreath: boolean; interact: boolean };
 
@@ -122,18 +130,34 @@ export class Game {
   private lookScale = 1; // player settings, see applySettings
   private invertY = false;
   private quality: Quality = 'medium';
+  private hintsOn = true;
+  private levelClues: Record<number, string[]> = {}; // the clue list each level was generated from (for resuming)
+  private onEnter: (() => void) | undefined; // runs once the next level has been entered (resume, shortcuts)
+  private hintsShown: Set<string>;
+  private nearestHushman = { x: 0, z: 0 };
+  private danger = 0; // 0..1, how close something is to taking you: drives the tension score
+  private scareTimer = 40; // seconds to the next small scare (a whisper, a knock, a candle going out)
+  private caughtLit = false; // was your light on when a Hushman caught you (for the death screen's tip)
 
-  constructor(gl: GL, private meta: Meta, private events: GameEvents, private debug: DebugStart = {}) {
+  constructor(gl: GL, private meta: Meta, private events: GameEvents, private debug: DebugStart = {}, private opening: StartOptions = {}) {
     this.renderer = new Renderer(gl);
     this.assets = new Assets(this.renderer.three, gl);
     this.camera.aspect = this.renderer.width / this.renderer.height;
     this.camera.updateProjectionMatrix();
     this.camera.rotation.order = 'YXZ';
-    const seed = __DEV__ && debug.seed !== undefined ? debug.seed : (Date.now() ^ (meta.runs * 2654435761)) >>> 0;
+    const snap = opening.resume;
+    const seed = snap ? snap.seed : __DEV__ && debug.seed !== undefined ? debug.seed : (Date.now() ^ (meta.runs * 2654435761)) >>> 0;
     const u = unlocks(meta);
     this.run = newRun(seed, meta.victims.length, u.extraMatch ? 1 : 0);
-    this.layout = generateLayout(seed, meta.clues);
+    if (snap) {
+      this.run = { ...this.run, ...(snap.run as Partial<RunState>), dead: false, escaped: false };
+      this.foundClues = [...snap.foundClues];
+      this.saved = snap.saved;
+    }
+    this.levelClues[2] = snap?.layer === 2 ? snap.genClues : meta.clues;
+    this.layout = generateLayout(seed, this.levelClues[2]);
     this.listenerRng = createRng(seed ^ 0x51f15e);
+    this.hintsShown = new Set(meta.hints);
     // the player's hand: match light and its flame sit low and to the right of the view
     this.match.position.set(0.09, -0.1, -0.22);
     this.flame.position.copy(this.match.position).add(new THREE.Vector3(0, 0.012, 0));
@@ -164,31 +188,25 @@ export class Game {
     this.attach(this.coffin.scene);
     this.renderer.three.compile(this.coffin.scene, this.camera);
     mark('shaders compiled');
-    if (__DEV__ && this.debug.layer === 5) {
+    const snap = this.opening.resume;
+    const startLayer = snap?.layer ?? this.opening.layer ?? (__DEV__ ? this.debug.layer : undefined);
+    if (startLayer && startLayer >= 2) {
       this.lidProgress = 1;
-      this.surfaceReady = buildSurface(this.assets, generateSurface(this.run.seed));
-      this.goToSurface();
-      mark('debug start on the surface');
-      return;
-    }
-    if (__DEV__ && this.debug.layer === 4) {
-      this.lidProgress = 1;
-      this.necropolisReady = buildNecropolis(this.assets, generateNecropolis(this.run.seed, this.meta.clues));
-      this.goToNecropolis();
-      setTimeout(() => { if (this.debug.match) this.lightMatch(); if (this.debug.phone) this.usePhone(); }, 2500);
-      mark('debug start in the necropolis');
-      return;
-    }
-    if (__DEV__ && this.debug.layer === 3) {
-      this.lidProgress = 1;
-      this.catacombsReady = buildCatacombs(this.assets, generateCatacombs(this.run.seed, this.meta.clues));
-      this.goToCatacombs();
-      setTimeout(() => {
-        if (this.debug.match) this.lightMatch();
-        if (this.debug.phone) this.usePhone();
-        if (this.debug.yaw !== undefined) this.yaw = this.debug.yaw;
-      }, 2500);
-      mark('debug start in the catacombs');
+      if (snap) this.onEnter = () => this.restore(snap);
+      else if (this.opening.layer) this.onEnter = () => this.shortcut();
+      const clues = snap?.genClues ?? this.meta.clues;
+      if (startLayer === 2) this.enterCrypt();
+      else if (startLayer === 3) { this.catacombsReady = this.makeCatacombs(clues); this.goToCatacombs(); }
+      else if (startLayer === 4) { this.necropolisReady = this.makeNecropolis(clues); this.goToNecropolis(); }
+      else { this.surfaceReady = this.makeSurface(); this.goToSurface(); }
+      if (__DEV__) {
+        setTimeout(() => {
+          if (this.debug.match) this.lightMatch();
+          if (this.debug.phone) this.usePhone();
+          if (this.debug.yaw !== undefined) this.yaw = this.debug.yaw;
+        }, 2500);
+      }
+      mark(`start at layer ${startLayer}${snap ? ' (resumed)' : ''}`);
       return;
     }
     this.enterCoffin();
@@ -224,7 +242,7 @@ export class Game {
   lightMatch() {
     const before = this.run;
     this.run = strikeMatch(this.run);
-    if (this.run !== before) { this.sound.play('match_strike', 0.9); this.flash = 0.12; }
+    if (this.run !== before) { this.sound.play('match_strike', 0.9); this.flash = 0.12; setTimeout(() => this.hint('match'), 1800); }
   }
 
   usePhone() {
@@ -232,9 +250,59 @@ export class Game {
     this.sound.play('phone_click', 0.6);
   }
 
+  /** Now and then, while nothing is hunting you, the dark plays a trick: a whisper behind you, a knock, falling
+   *  dirt, a candle guttering out. Keeps repeat runs from feeling the same. */
+  private updateScares(dt: number) {
+    if (this.danger > 0.25 || this.ended) return;
+    this.scareTimer -= dt;
+    if (this.scareTimer > 0) return;
+    this.scareTimer = 35 + Math.random() * 40;
+    const layer = this.level?.layer ?? 2;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const candle = (this.level?.lit ?? []).filter((l) => l.flicker && Math.hypot(l.pos.x - this.pos.x, l.pos.z - this.pos.z) < 8);
+    const options: (() => void)[] = [
+      () => this.sound.playVariant('whisper', 0.45, side * (0.7 + Math.random() * 0.3)), // from behind, to one side
+    ];
+    if (layer <= 3) options.push(() => this.sound.playAt('knock', 0.25, side * Math.random()));
+    if (layer <= 4) options.push(() => this.sound.play('dirt_fall', 0.35));
+    if (candle.length) {
+      options.push(() => {
+        const c = candle[Math.floor(Math.random() * candle.length)];
+        const was = c.intensity;
+        c.intensity = 0;
+        this.sound.play('match_out', 0.45);
+        setTimeout(() => { c.intensity = was; }, 1800);
+      });
+    }
+    options[Math.floor(Math.random() * options.length)]();
+    this.run = scare(this.run, 0.1);
+    this.events.haptic('light');
+  }
+
+  /**
+   * Where a sound at (x, z) is heard from: pan -1..1 (left..right of where you look) and a gain that dulls sounds
+   * behind you a little, so on headphones you can tell where the Listener or a lantern is.
+   */
+  private heard(x: number, z: number): { pan: number; gain: number } {
+    const dx = x - this.pos.x, dz = z - this.pos.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const right = (dx * Math.cos(this.yaw) - dz * Math.sin(this.yaw)) / d;
+    const ahead = (-dx * Math.sin(this.yaw) - dz * Math.cos(this.yaw)) / d;
+    return { pan: right, gain: ahead < -0.3 ? 0.8 : 1 };
+  }
+
+  /** Show a one-time tip, unless hints are off or it has been seen before (in any run). */
+  private hint(id: HintId) {
+    if (!this.hintsOn || this.hintsShown.has(id) || this.ended) return;
+    this.hintsShown.add(id);
+    this.events.hint(id, HINTS[id]);
+  }
+
   /** The player's settings: volume, look, and graphics quality (resolution, bone distance, rain, lantern beams). */
   applySettings(s: Settings) {
     this.sound.setMaster(s.volume);
+    this.renderer.setGamma(brightnessGamma(s.brightness));
+    this.hintsOn = s.hints;
     this.lookScale = s.sensitivity;
     this.invertY = s.invertY;
     if (s.quality !== this.quality || !this.qualityApplied) {
@@ -279,6 +347,44 @@ export class Game {
     setTimeout(() => { this.sound.play('thud', 0.7); this.shake = 0.4; this.events.haptic('heavy'); }, 3000);
     setTimeout(() => this.events.say('Light a match. Push the lid.'), 6000);
     setTimeout(() => this.events.say(null), 11000);
+    setTimeout(() => this.hint('air'), 12000);
+  }
+
+  private makeCatacombs(clues: string[]) { this.levelClues[3] = clues; return buildCatacombs(this.assets, generateCatacombs(this.run.seed, clues)); }
+  private makeNecropolis(clues: string[]) { this.levelClues[4] = clues; return buildNecropolis(this.assets, generateNecropolis(this.run.seed, clues)); }
+  private makeSurface() { this.levelClues[5] = []; return buildSurface(this.assets, generateSurface(this.run.seed)); }
+
+  /** The run so far, for saving when the app goes to the background. Only while walking a level. */
+  snapshot(): RunSnapshot | null {
+    const level = this.level;
+    if (!this.walking || this.ended || !level) return null;
+    return {
+      version: 1, seed: this.run.seed, layer: level.layer, run: { ...this.run }, foundClues: [...this.foundClues], saved: this.saved,
+      pos: { x: this.pos.x, z: this.pos.z }, yaw: this.yaw, genClues: this.levelClues[level.layer] ?? this.meta.clues,
+      done: level.interactables.flatMap((it, i) => (it.done ? [i] : [])),
+    };
+  }
+
+  /** Put a resumed run back where it was: position, and the things already taken or dug out. */
+  private restore(snap: RunSnapshot) {
+    this.pos.set(snap.pos.x, 0, snap.pos.z);
+    this.yaw = snap.yaw;
+    for (const i of snap.done) {
+      const it = this.level?.interactables[i];
+      if (!it) continue;
+      it.done = true;
+      if (it.def.type === 'survivor') it.object.scale.y = 0.3;
+      else if (it.def.type !== 'exit') it.object.visible = false;
+    }
+    this.events.say('You come back to yourself in the dark.');
+    setTimeout(() => this.events.say(null), 4000);
+  }
+
+  /** A run that starts deeper, at a layer you've reached before: less air and fewer matches. */
+  private shortcut() {
+    this.run = { ...this.run, air: this.run.airMax * 0.7, matches: Math.min(this.run.matches, 2) };
+    setTimeout(() => this.events.say('You have been this deep before. Less air. Fewer matches.'), 4800);
+    setTimeout(() => this.events.say(null), 9000);
   }
 
   private enterLevel(level: Level, phase: 'crypt' | 'catacombs' | 'necropolis' | 'surface', line: string) {
@@ -290,12 +396,16 @@ export class Game {
     this.fadeTarget = 0;
     this.events.say(line);
     setTimeout(() => this.events.say(null), 4500);
+    const after = this.onEnter;
+    this.onEnter = undefined;
+    after?.();
   }
 
   private enterCrypt() {
     this.enterLevel(this.crypt, 'crypt', 'You claw through the soil into the crypt.');
+    setTimeout(() => this.hint('phone'), 6000);
     // build the catacombs in the background while you explore the crypt
-    this.catacombsReady = buildCatacombs(this.assets, generateCatacombs(this.run.seed, [...this.meta.clues, ...this.foundClues]));
+    this.catacombsReady = this.makeCatacombs([...this.meta.clues, ...this.foundClues]);
   }
 
   private goToCatacombs() {
@@ -303,7 +413,7 @@ export class Game {
     this.fadeTarget = 1;
     this.focus = null;
     this.sound.playVariant('step_stone', 0.6);
-    const ready = this.catacombsReady ?? buildCatacombs(this.assets, generateCatacombs(this.run.seed, this.meta.clues));
+    const ready = this.catacombsReady ?? this.makeCatacombs(this.meta.clues);
     Promise.all([ready, new Promise((r) => setTimeout(r, 1600))]).then(([c]) => {
       if (this.run.dead || this.ended) return;
       this.catacombs = c;
@@ -313,7 +423,8 @@ export class Game {
       this.listener = spawnListener(c.layout.maze, start);
       this.sound.play('ghost_swell', 0.8);
       this.enterLevel(c, 'catacombs', 'The catacombs. Bones line every wall. Something down here is breathing.');
-      this.necropolisReady = buildNecropolis(this.assets, generateNecropolis(this.run.seed, [...this.meta.clues, ...this.foundClues]));
+      setTimeout(() => this.hint('listener'), 5500);
+      this.necropolisReady = this.makeNecropolis([...this.meta.clues, ...this.foundClues]);
     }).catch((e) => console.error('catacombs failed to load', e));
   }
 
@@ -322,7 +433,7 @@ export class Game {
     this.fadeTarget = 1;
     this.focus = null;
     this.sound.play('step_stone_0', 0.6);
-    const ready = this.necropolisReady ?? buildNecropolis(this.assets, generateNecropolis(this.run.seed, this.meta.clues));
+    const ready = this.necropolisReady ?? this.makeNecropolis(this.meta.clues);
     Promise.all([ready, new Promise((r) => setTimeout(r, 1600))]).then(([n]) => {
       if (this.run.dead || this.ended) return;
       this.necropolis = n;
@@ -332,7 +443,8 @@ export class Game {
       this.applyQualityToLevels();
       this.sound.play('ghost_swell', 0.8);
       this.enterLevel(n, 'necropolis', 'The necropolis. Lanterns move between the tombs. Keep to the dark.');
-      this.surfaceReady = buildSurface(this.assets, generateSurface(this.run.seed));
+      setTimeout(() => this.hint('hushmen'), 5500);
+      this.surfaceReady = this.makeSurface();
     }).catch((e) => console.error('necropolis failed to load', e));
   }
 
@@ -341,7 +453,7 @@ export class Game {
     this.fadeTarget = 1;
     this.focus = null;
     this.sound.play('step_stone_1', 0.6);
-    const ready = this.surfaceReady ?? buildSurface(this.assets, generateSurface(this.run.seed));
+    const ready = this.surfaceReady ?? this.makeSurface();
     Promise.all([ready, new Promise((r) => setTimeout(r, 1600))]).then(([s]) => {
       if (this.run.dead || this.ended) return;
       this.surface = s;
@@ -352,6 +464,7 @@ export class Game {
       this.sound.play('gasp', 0.9); // the first real breath
       this.sound.play('thunder', 0.5);
       this.enterLevel(s, 'surface', 'Rain. Air. The graveyard above Vael. Lanterns wait by the church.');
+      setTimeout(() => this.hint('surface'), 5500);
     }).catch((e) => console.error('surface failed to load', e));
   }
 
@@ -395,7 +508,7 @@ export class Game {
       this.foundClues, abandoned.map((a) => `${this.run.seed}-${a.roomIndex}`));
     setTimeout(() => {
       this.sound.stopLoops();
-      this.events.end({ fate, victim, layer, newClues: this.foundClues, saved: this.saved, abandoned: abandoned.length, ending }, meta);
+      this.events.end({ fate, victim, layer, newClues: this.foundClues, saved: this.saved, abandoned: abandoned.length, ending, ...deathLesson(fate, layer, this.caughtLit) }, meta);
     }, ending === 'bells' ? 5200 : 3200);
   }
 
@@ -416,6 +529,8 @@ export class Game {
       if (prev.phoneOn && !this.run.phoneOn && this.run.battery === 0) this.events.say('The phone dies.');
       if (this.run.dead) this.endRun('suffocated', this.phase === 'coffin' ? 1 : this.level?.layer ?? 2);
     }
+    if (this.walking && this.run.panic > 0.65) this.hint('calm');
+    if (this.walking && this.level?.airPockets.some((a) => Math.hypot(a.pos.x - this.pos.x, a.pos.z - this.pos.z) < 4)) this.hint('pocket');
     this.noise = this.alive ? noiseRadius({ movement, holdingBreath: inp.holdingBreath, exerting: pushing || !!digging, panic: this.run.panic }) : 0;
 
     this.updateLook();
@@ -424,6 +539,8 @@ export class Game {
     if (this.phase === 'catacombs') this.updateListener(dt);
     if (this.phase === 'necropolis' || this.phase === 'surface') this.updateHushmen(dt);
     if (this.phase === 'surface') this.updateSurface(dt);
+    if (this.walking) this.updateScares(dt);
+    if (this.phase !== 'catacombs' && !this.watched) this.danger = Math.max(0, this.danger - dt * 0.3);
     if (this.phase === 'catacombs') this.cullBones();
     this.updateLights(dt);
     this.updateAudio(dt, inPocket, pushing || !!digging);
@@ -634,14 +751,17 @@ export class Game {
     this.knockTimer -= dt;
     if (this.knockTimer <= 0) {
       this.knockTimer = 4 + Math.random() * 3;
-      let loudest = 0;
+      let loudest = 0, from = { x: 0, z: 0 };
       for (const it of level.interactables) {
         if (it.def.type !== 'survivor' || it.done) continue;
         const d = Math.hypot(it.pos.x - this.pos.x, it.pos.z - this.pos.z);
-        loudest = Math.max(loudest, Math.max(0, 1 - d / 14));
+        const v = Math.max(0, 1 - d / 14);
+        if (v > loudest) { loudest = v; from = it.pos; }
       }
       if (loudest > 0.02) {
-        this.sound.play('knock', loudest);
+        if (loudest > 0.25) this.hint('survivor');
+        const at = this.heard(from.x, from.z);
+        this.sound.playAt('knock', loudest * at.gain, at.pan);
         if (loudest > 0.6) this.events.haptic('heavy');
       }
     }
@@ -702,6 +822,8 @@ export class Game {
     animateListener(c.listenerRig, { time: this.time, dt, mode: r.state.mode, moving, lunge: Math.min(1, this.lunge * 3) });
 
     const d = Math.hypot(this.pos.x - r.state.x, this.pos.z - r.state.z);
+    if (d < 9) this.hint('breath');
+    this.danger = Math.max(Math.max(0, 1 - d / 14) * (r.state.mode === 'hunt' ? 1 : 0.6), r.state.mode === 'hunt' ? 0.55 : 0);
     const near = Math.max(0, 1 - d / 11);
     const heard = Math.max(0, 1 - d / 17); // its body carries further through the tunnels than its breath
     const hunting = r.state.mode === 'hunt';
@@ -712,7 +834,8 @@ export class Game {
     if (moving && this.dragTimer <= 0 && heard > 0.02) {
       this.dragTimer = hunting ? 0.42 : 0.85;
       const v = Math.pow(heard, 1.3);
-      this.sound.playVariant('listener_stomp', v);
+      const at = this.heard(r.state.x, r.state.z);
+      this.sound.playVariant('listener_stomp', v * at.gain, at.pan);
       this.sound.playVariant('listener_step', v * 0.6);
       if (Math.random() < 0.3) this.sound.play('listener_drag', v * 0.6);
       if (near > 0.5) this.events.haptic('light'); // close enough to feel it through the floor
@@ -721,14 +844,16 @@ export class Game {
     this.growlTimer -= dt;
     if (this.growlTimer <= 0 && heard > 0.05 && this.lunge === 0) {
       this.growlTimer = hunting ? 1.6 + Math.random() * 1.6 : 4 + Math.random() * 5;
-      if (hunting && Math.random() < 0.45) this.sound.play('listener_screech', Math.max(0.35, heard));
-      else this.sound.playVariant('listener_growl', Math.pow(heard, 1.1) * 0.95);
+      const at = this.heard(r.state.x, r.state.z);
+      if (hunting && Math.random() < 0.45) this.sound.playAt('listener_screech', Math.max(0.35, heard) * at.gain, at.pan);
+      else this.sound.playVariant('listener_growl', Math.pow(heard, 1.1) * 0.95 * at.gain, at.pan);
     }
     this.shriekCooldown -= dt;
     if (r.startedHunting && this.shriekCooldown <= 0) {
       this.shriekCooldown = 10;
       this.growlTimer = 1.5;
-      this.sound.play('listener_screech', Math.max(0.6, heard));
+      const at = this.heard(r.state.x, r.state.z);
+      this.sound.playAt('listener_screech', Math.max(0.6, heard), at.pan);
       this.run = scare(this.run, 0.5);
       this.events.haptic('heavy');
       this.events.say('It heard you.');
@@ -788,22 +913,30 @@ export class Game {
       const d = Math.hypot(this.pos.x - r.state.x, this.pos.z - r.state.z);
       nearest = Math.min(nearest, d);
       if (r.startedChase) {
-        this.sound.play('hushman_alert', Math.max(0.6, 1 - d / 14));
+        this.sound.playAt('hushman_alert', Math.max(0.6, 1 - d / 14), this.heard(r.state.x, r.state.z).pan);
         this.run = scare(this.run, 0.55);
         this.events.haptic('heavy');
         this.events.say(player.lit ? 'They saw your light.' : 'A lantern turns toward you.');
         setTimeout(() => this.events.say(null), 2500);
       }
-      if (moving && Math.random() < dt * (r.state.mode === 'chase' ? 3 : 1.3) && d < 12) this.sound.playVariant('step_stone', Math.max(0, 1 - d / 12) * 0.5);
+      if (moving && Math.random() < dt * (r.state.mode === 'chase' ? 3 : 1.3) && d < 12) {
+        const at = this.heard(r.state.x, r.state.z);
+        this.sound.playVariant('hushman_step', Math.max(0, 1 - d / 12) * 0.6 * at.gain, at.pan);
+      }
+      if (d === nearest) this.nearestHushman = { x: r.state.x, z: r.state.z };
       caught ||= r.caught;
+      if (r.state.suspicion > 0.3) this.hint('tombs');
       return r.state;
     });
+    const chasing = this.hushmen.some((h) => h.mode === 'chase');
+    this.danger = Math.max(chasing ? 0.85 : 0, ...this.hushmen.map((h) => h.suspicion * 0.8), Math.max(0, 1 - nearest / 10) * 0.45);
     this.sound.setLoop('hushman_chant_loop', Math.pow(Math.max(0, 1 - nearest / 13), 1.3) * 0.85, dt, 2);
     this.chantTimer -= dt;
-    if (this.chantTimer <= 0 && nearest < 9) { this.chantTimer = 3 + Math.random() * 4; this.sound.play('lantern_creak', Math.max(0, 1 - nearest / 9) * 0.6); }
+    if (this.chantTimer <= 0 && nearest < 9) { this.chantTimer = 3 + Math.random() * 4; const at = this.heard(this.nearestHushman.x, this.nearestHushman.z); this.sound.playAt('lantern_creak', Math.max(0, 1 - nearest / 9) * 0.6 * at.gain, at.pan); }
     // the fog drifts
     n.fog.forEach((f, k) => { const t = (f.material as THREE.MeshBasicMaterial).map!; t.offset.x += dt * 0.006 * (k + 1); t.offset.y += dt * 0.003 * (k % 2 ? -1 : 1); });
     if (caught && !this.ended) {
+      this.caughtLit = player.lit;
       this.flash = 0.35;
       this.shake = 1;
       this.events.haptic('heavy');
@@ -927,6 +1060,10 @@ export class Game {
     if (this.phase !== 'catacombs') s.setLoop('listener_breath_loop', 0, dt, 3);
     if (this.phase !== 'necropolis' && this.phase !== 'surface') s.setLoop('hushman_chant_loop', 0, dt, 2);
     s.setLoop('rain_loop', this.phase === 'surface' ? 0.8 : 0, dt, 1);
+    // the score: a low drone under everything (pitched per layer), and strings that rise as danger closes in
+    s.setLoop('drone_loop', this.walking ? 0.3 : this.phase === 'coffin' ? 0.14 : 0, dt, 0.5);
+    s.setRate('drone_loop', DRONE_RATE[this.phase] ?? 1);
+    s.setLoop('tension_loop', this.alive ? Math.min(0.75, this.danger) : 0, dt, 1.5);
     let wind = inPocket ? 0.7 : 0;
     if (this.walking && this.level) {
       for (const a of this.level.airPockets) wind = Math.max(wind, 0.5 * Math.max(0, 1 - Math.hypot(a.pos.x - this.pos.x, a.pos.z - this.pos.z) / 6));
@@ -955,6 +1092,9 @@ export class Game {
     });
   }
 }
+
+/** The drone's pitch per layer: lower and heavier underground, a little higher on the surface. */
+const DRONE_RATE: Partial<Record<Phase, number>> = { crypt: 0.92, catacombs: 0.84, necropolis: 1, surface: 1.08 };
 
 /** The verb on the action button for the thing in front of you. */
 function actionVerb(it: LiveInteractable): string {

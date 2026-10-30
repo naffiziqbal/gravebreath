@@ -34,25 +34,35 @@ export type ActionPadProps = {
   onHoldBreath(down: boolean): void;
   /** on a computer: the key for each button, shown as a small keycap */
   keys?: { action: string; match: string; phone: string; breath: string; calm: string };
+  /** player settings: button size, opacity, and the left-handed layout (buttons on the left) */
+  scale?: number;
+  opacity?: number;
+  mirrored?: boolean;
 };
 
 export function ActionPad(p: ActionPadProps) {
   const [calm, setCalm] = useState(false);
   const [breath, setBreath] = useState(false);
+  // left-handed: the arc of buttons flips to the left edge
+  const m = (st: { right: number; bottom: number }) => (p.mirrored ? { left: st.right, bottom: st.bottom } : st);
+  const padStyle = [
+    p.mirrored ? styles.padLeft : styles.pad,
+    { opacity: p.opacity ?? 1, transform: [{ scale: p.scale ?? 1 }], transformOrigin: p.mirrored ? 'bottom left' : 'bottom right' } as const,
+  ];
   return (
-    <View style={styles.pad} pointerEvents="box-none">
+    <View style={padStyle} pointerEvents="box-none">
       {/* the action: only there when there is something to do */}
       {p.action && (
-        <RoundButton size={92} style={styles.action} label={p.action} hold={p.holdAction} accent={blood} progress={p.progress} keycap={p.keys?.action}
+        <RoundButton size={92} style={[styles.actionBorder, m(styles.action)]} label={p.action} hold={p.holdAction} accent={blood} progress={p.progress} keycap={p.keys?.action}
           icon={ACTION_ICON[p.action] ?? 'gesture-tap'} onDown={() => p.onAction(true)} onUp={() => p.onAction(false)} />
       )}
-      <RoundButton size={62} style={styles.match} icon="fire" active={p.matchLit} accent={MATCH} disabled={p.matches === 0 && !p.matchLit}
+      <RoundButton size={62} style={m(styles.match)} icon="fire" active={p.matchLit} accent={MATCH} disabled={p.matches === 0 && !p.matchLit}
         badge={String(p.matches)} keycap={p.keys?.match} onPress={p.onMatch} a11y={`Light a match, ${p.matches} left`} />
-      <RoundButton size={62} style={styles.phone} icon="flashlight" active={p.phoneOn} accent={PHONE} disabled={p.battery <= 0}
+      <RoundButton size={62} style={m(styles.phone)} icon="flashlight" active={p.phoneOn} accent={PHONE} disabled={p.battery <= 0}
         meter={p.battery} keycap={p.keys?.phone} onPress={p.onPhone} a11y={`Phone light, ${Math.round(p.battery * 100)} percent`} />
-      <RoundButton size={58} style={styles.breath} icon="lungs" active={breath} accent={blood} a11y="Hold your breath" keycap={p.keys?.breath}
+      <RoundButton size={58} style={m(styles.breath)} icon="lungs" active={breath} accent={blood} a11y="Hold your breath" keycap={p.keys?.breath}
         onDown={() => { setBreath(true); p.onHoldBreath(true); }} onUp={() => { setBreath(false); p.onHoldBreath(false); }} />
-      <RoundButton size={52} style={styles.calm} icon="meditation" active={calm} accent="#c9d6c2" a11y="Calm your breathing" keycap={p.keys?.calm}
+      <RoundButton size={52} style={m(styles.calm)} icon="meditation" active={calm} accent="#c9d6c2" a11y="Calm your breathing" keycap={p.keys?.calm}
         onDown={() => { setCalm(true); p.onCalm(true); }} onUp={() => { setCalm(false); p.onCalm(false); }} />
     </View>
   );
@@ -112,11 +122,13 @@ function RoundButton(b: RoundProps) {
 
 const styles = StyleSheet.create({
   pad: { position: 'absolute', right: 18, bottom: 16, width: 250, height: 200 },
+  padLeft: { position: 'absolute', left: 18, bottom: 16, width: 250, height: 200 },
   round: {
     position: 'absolute', alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5, borderColor: 'rgba(228,216,196,0.28)', backgroundColor: 'rgba(12,8,7,0.55)',
   },
-  action: { right: 0, bottom: 0, borderColor: 'rgba(163,18,14,0.75)', borderWidth: 2 },
+  action: { right: 0, bottom: 0 },
+  actionBorder: { borderColor: 'rgba(163,18,14,0.75)', borderWidth: 2 },
   breath: { right: 104, bottom: 2 },
   match: { right: 90, bottom: 84 },
   phone: { right: 12, bottom: 108 },

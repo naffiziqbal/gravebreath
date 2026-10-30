@@ -274,9 +274,91 @@ def surface():
     b[:secs(0.02)] += bp(noise(secs(0.02)), 800, 4000) * 0.5  # the clapper
     write("bell_toll", room(b, 3.0, 0.9, 0.35), 0.75)
 
+
+def write_stereo(name, L, R, peak=0.9):
+    pk = max(np.abs(L).max(), np.abs(R).max()) + 1e-9
+    st = np.stack([L, R], 1) / pk * peak
+    os.makedirs(OUT, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        with wave.open(tmp.name, "wb") as f:
+            f.setnchannels(2); f.setsampwidth(2); f.setframerate(SR)
+            f.writeframes((st * 32767).astype(np.int16).tobytes())
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp.name, "-c:a", "libmp3lame", "-q:a", "3",
+                        os.path.join(OUT, f"{name}.mp3")], check=True)
+    os.unlink(tmp.name)
+
+def read_mp3(name):
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", os.path.join(OUT, f"{name}.mp3"), "-ac", "1", "-ar", str(SR), tmp.name], check=True)
+        with wave.open(tmp.name) as f:
+            x = np.frombuffer(f.readframes(f.getnframes()), np.int16).astype(np.float64) / 32768
+    os.unlink(tmp.name)
+    return x
+
+# positions the game picks between: index 2 is the original (centre); pan -1 = hard left, +1 = hard right
+PANS = {0: -1.0, 1: -0.5, 3: 0.5, 4: 1.0}
+PANNED = ["listener_stomp_0", "listener_stomp_1", "listener_stomp_2", "listener_stomp_3", "listener_growl_0", "listener_growl_1",
+          "listener_growl_2", "listener_screech", "knock", "lantern_creak", "hushman_alert", "hushman_step_0", "hushman_step_1",
+          "whisper_0", "whisper_1", "whisper_2"]
+
+def spatial(x, pan):
+    """Headphone cues for a mono sound at `pan`: equal-power level difference, a sub-millisecond delay to the far ear,
+    and head shadow (the far ear hears it duller)."""
+    a = (pan + 1) * np.pi / 4
+    gl, gr = np.cos(a), np.sin(a)
+    delay = int(abs(pan) * 0.00065 * SR)
+    near, far = x, np.concatenate([np.zeros(delay), lp(x, 9000 - 6500 * abs(pan))])[: len(x)]
+    return (near * gl, far * gr) if pan < 0 else (far * gl, near * gr)
+
+def panned():
+    """Stereo copies of the sounds that tell you where something is (`name__p0`..`name__p4`, centre = the original)."""
+    for name in PANNED:
+        x = read_mp3(name)
+        for k, pan in PANS.items():
+            L, R = spatial(x, pan)
+            write_stereo(f"{name}__p{k}", L, R, 0.85)
+        print("panned", name)
+
+def hushman_steps():
+    """The Hushmen's own footsteps: a slow, heavy shuffle of robe and boot, softer and duller than yours."""
+    for k, src in enumerate(["step_stone_1", "step_stone_4"]):
+        x = lp(read_mp3(src), 2200) * 0.9
+        n = len(x); x = x + bp(noise(n), 300, 1600) * env_exp(n, 0.12) * 0.12  # the hem of the robe dragging
+        write(f"hushman_step_{k}", room(x, 1.2, 0.3, 0.3), 0.7)
+
+def whispers():
+    """Whispers behind you for the random scares: a breathy voice, filtered and lost in the dark."""
+    for k, line in enumerate(["hush", "dont waste it", "one breath"]):
+        v = say(line, voice="Whisper", rate=120, pitch=0.85)
+        x = bp(v, 400, 5000)
+        x = room(np.concatenate([x, np.zeros(secs(1.0))]), 1.8, 0.5, 0.45)
+        write(f"whisper_{k}", x * np.minimum(1, np.arange(len(x)) / secs(0.05)), 0.6)
+
+def score():
+    """A low drone under every layer, and a tension layer the game raises as danger closes in."""
+    n = secs(16.4); tt = np.arange(n) / SR
+    d = np.zeros(n)
+    for f0, amp in ((36.7, 1.0), (55.0, 0.55), (73.4, 0.3), (110.0, 0.12)):
+        for det in (0.997, 1.0, 1.004):
+            d += amp * np.sin(2 * np.pi * f0 * det * tt + np.sin(2 * np.pi * 0.07 * tt) * 0.8) / 3
+    d *= 0.75 + 0.25 * np.sin(2 * np.pi * tt / 8.2)  # slow swells
+    d += lp(noise(n), 180) * 0.08
+    write("drone_loop", loopify(room(d, 3.0, 1.0, 0.4), 0.8), 0.6)
+    n = secs(12.4); tt = np.arange(n) / SR
+    t = np.zeros(n)
+    for f0 in (466.2, 493.9, 523.3, 698.5):  # close, sour intervals: strings that won't resolve
+        vib = 1 + 0.004 * np.sin(2 * np.pi * 5.3 * tt + f0)
+        saw = 2 * ((np.cumsum(np.full(n, f0) * vib) / SR) % 1) - 1
+        t += lp(saw, 2400) * (0.5 + 0.5 * np.sin(2 * np.pi * 9.5 * tt + f0) ** 2)  # bowed tremolo
+    pulse = np.zeros(n)
+    for b in np.arange(0, 12.4, 0.75):  # a low heartbeat-like pulse under it
+        add(pulse, b, np.sin(2 * np.pi * 48 * np.arange(secs(0.3)) / SR) * env_exp(secs(0.3), 0.08), 0.9)
+    write("tension_loop", loopify(room(t * 0.25 + pulse * 0.6, 2.0, 0.6, 0.35), 0.6), 0.55)
+
 if __name__ == "__main__":
     import sys
     if "--necropolis" in sys.argv: necropolis()
     elif "--surface" in sys.argv: surface()
     elif "--listener" in sys.argv: listener()
+    elif "--experience" in sys.argv: hushman_steps(); whispers(); score(); panned()
     else: main(); necropolis(); surface(); listener()

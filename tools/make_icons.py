@@ -75,6 +75,21 @@ def monochrome(size=SS, scale=1.0):
 def background(size=SS):
     return Image.fromarray(radial(size, 0.5, 0.85, 0.9, (96, 24, 8), (3, 2, 3))).convert("RGBA")  # a lantern glow from below
 
+def splash(size=SS):
+    """The splash: the mask, and the studio's name underneath it (it is the only place the name appears now)."""
+    from PIL import ImageFont
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    mask = mask_art(size, scale=0.72)
+    im.alpha_composite(mask.resize((int(size * 0.86), int(size * 0.86)), Image.LANCZOS), (int(size * 0.07), 0))
+    d = ImageDraw.Draw(im)
+    font = ImageFont.truetype("/System/Library/Fonts/Avenir Next.ttc", int(size * 0.052), index=2)  # Demi Bold
+    text, track = "A NEXUS BENDERS GAME", size * 0.012
+    widths = [d.textlength(c, font=font) for c in text]
+    x = (size - sum(widths) - track * (len(text) - 1)) / 2
+    for c, w in zip(text, widths):
+        d.text((x, size * 0.90), c, font=font, fill=(200, 190, 175, 255), anchor="lm"); x += w + track
+    return im
+
 def save(im, path, size):
     im.resize((size, size), Image.LANCZOS).save(os.path.join(A, path))
     print("wrote", path, size)
@@ -87,4 +102,4 @@ if __name__ == "__main__":
     save(mask_art(scale=0.62), "android-icon-foreground.png", 1024)
     save(background().convert("RGB"), "android-icon-background.png", 1024)
     save(monochrome(scale=0.55), "android-icon-monochrome.png", 1024)
-    save(mask_art(scale=0.9), "splash-icon.png", 1024)
+    save(splash(), "splash-icon.png", 1024)

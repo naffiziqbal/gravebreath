@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { Clue } from './data/clues';
 import type { Meta } from './sim/meta';
 import type { Ending } from './sim/endings';
-import { loadMeta, saveMeta } from './save';
+import { clearRun, loadMeta, saveMeta } from './save';
 import { loadSettings, saveSettings, type Settings } from './settings';
 
 export type Hud = {
@@ -25,7 +25,8 @@ export type Hud = {
   debug: string | null; // dev builds only: render resolution and fps
 };
 
-export type RunEnd = { fate: 'suffocated' | 'escaped' | 'taken'; victim: string; layer: number; newClues: string[]; saved: number; abandoned: number; ending?: Ending };
+export type RunEnd = { fate: 'suffocated' | 'escaped' | 'taken'; victim: string; layer: number; newClues: string[]; saved: number; abandoned: number; ending?: Ending;
+  cause?: string; tip?: string }; // what got you, and how to survive it next time
 
 type Store = {
   hud: Hud;
@@ -35,6 +36,7 @@ type Store = {
   choices: Ending[] | null; // at the ledger: the endings on offer (pauses the run)
   chosen: Ending | null; // what the player picked; GameView hands it to the game
   paused: boolean; // the pause menu is open
+  hint: string | null; // a one-time tip on screen
   settings: Settings;
   meta: Meta;
   setHud(h: Hud): void;
@@ -44,6 +46,8 @@ type Store = {
   choose(c: Ending[] | null): void;
   pick(e: Ending): void;
   setPaused(p: boolean): void;
+  showHint(id: string, text: string): void;
+  hideHint(): void;
   updateSettings(s: Partial<Settings>): void;
   reset(): void;
 };
@@ -58,18 +62,29 @@ export const useGame = create<Store>((set) => ({
   choices: null,
   chosen: null,
   paused: false,
+  hint: null,
   settings: loadSettings(),
   meta: loadMeta(),
   setHud: (hud) => set({ hud }),
   say: (subtitle) => set({ subtitle }),
   showClue: (clue) => set({ clue }),
-  finish: (end, meta) => {
-    saveMeta(meta);
-    set({ end, meta });
-  },
+  finish: (end, meta) => set((st) => {
+    // the run's meta was copied when it started; keep the hints shown since then
+    const merged = { ...meta, hints: [...new Set([...meta.hints, ...st.meta.hints])] };
+    saveMeta(merged);
+    clearRun(); // the run is over: nothing to resume
+    return { end, meta: merged };
+  }),
   choose: (choices) => set({ choices }),
   pick: (chosen) => set({ chosen, choices: null }),
   setPaused: (paused) => set({ paused }),
+  showHint: (id, text) => set((st) => {
+    // remember it at once, so it never shows again even if this run is abandoned
+    const meta = st.meta.hints.includes(id) ? st.meta : { ...st.meta, hints: [...st.meta.hints, id] };
+    if (meta !== st.meta) saveMeta(meta);
+    return { hint: text, meta };
+  }),
+  hideHint: () => set({ hint: null }),
   updateSettings: (s) => set((st) => { const settings = { ...st.settings, ...s }; saveSettings(settings); return { settings }; }),
-  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null, choices: null, chosen: null, paused: false }),
+  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null, choices: null, chosen: null, paused: false, hint: null }),
 }));

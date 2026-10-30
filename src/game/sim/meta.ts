@@ -11,9 +11,10 @@ export type Meta = {
   clues: string[];
   survivorsLeft: string[]; // ids of survivors abandoned (their bodies appear on later runs)
   endings: Ending[]; // every ending seen, in the order first reached
+  hints: string[]; // one-time tips already shown
 };
 
-export const emptyMeta = (): Meta => ({ version: 1, runs: 0, victims: [], clues: [], survivorsLeft: [], endings: [] });
+export const emptyMeta = (): Meta => ({ version: 1, runs: 0, victims: [], clues: [], survivorsLeft: [], endings: [], hints: [] });
 
 const FIRST = ['Elias', 'Ruth', 'Tomas', 'Ada', 'Jonah', 'Mara', 'Silas', 'Edith', 'Abel', 'Nora', 'Caleb', 'Iris', 'Hollis', 'Agnes', 'Wren', 'Ezra'];
 const LAST = ['Marr', 'Calloway', 'Venn', 'Kell', 'Pryce', 'Ashby', 'Thorne', 'Gale', 'Morrow', 'Black', 'Rook', 'Vance', 'Holloway', 'Crane'];

@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { GLView } from 'expo-gl';
 import * as Haptics from 'expo-haptics';
-import { Platform, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
-import { Game, type DebugStart } from '../game/Game';
+import { AppState, Platform, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
+import { Game, type DebugStart, type StartOptions } from '../game/Game';
+import { saveRun } from '../game/save';
 import type { GL } from '../game/engine/assets';
 import { useGame } from '../game/store';
 import type { Settings } from '../game/settings';
@@ -17,7 +18,7 @@ import { ash, bone, fonts } from '../theme';
 type Stick = { id: string; ox: number; oy: number; x: number; y: number };
 const STICK_RADIUS = 60;
 
-export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStart }) {
+export function GameView({ paused, debug, opening }: { paused: boolean; debug?: DebugStart; opening?: StartOptions }) {
   const game = useRef<Game | null>(null);
   const width = useRef(1);
   const stick = useRef<Stick | null>(null);
@@ -26,6 +27,15 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
 
   useEffect(() => () => { game.current?.dispose(); game.current = null; }, []);
   useEffect(() => { game.current?.setPaused(paused); }, [paused]);
+  // leaving the app mid-run: save it, so a phone call or the system closing the app doesn't lose it
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') return;
+      const snap = game.current?.snapshot();
+      if (snap) saveRun(snap);
+    });
+    return () => sub.remove();
+  }, []);
   const { desktop, locked } = useDesktopControls(game, paused);
   const loading = useGame((s) => s.hud.phase === 'loading');
   const ended = useGame((s) => !!s.end);
@@ -48,7 +58,8 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
       },
       end: (e, meta) => useGame.getState().finish(e, meta),
       choose: (c) => useGame.getState().choose(c),
-    }, debug);
+      hint: (id, text) => useGame.getState().showHint(id, text),
+    }, debug, opening);
     game.current = g;
     g.applySettings(withDebug(useGame.getState().settings, debug));
     try {
@@ -67,7 +78,9 @@ export function GameView({ paused, debug }: { paused: boolean; debug?: DebugStar
   const onStart = (e: GestureResponderEvent) => {
     for (const t of touches(e)) {
       const id = String(t.identifier);
-      if (t.locationX < width.current * 0.42 && !stick.current) {
+      const left = useGame.getState().settings.leftHanded; // left-handed: move with the right thumb
+      const inStickZone = left ? t.locationX > width.current * 0.58 : t.locationX < width.current * 0.42;
+      if (inStickZone && !stick.current) {
         stick.current = { id, ox: t.locationX, oy: t.locationY, x: t.locationX, y: t.locationY };
         setStickView(stick.current);
       } else {

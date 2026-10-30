@@ -9,6 +9,8 @@ import { SettingsPanel } from '../components/SettingsPanel';
 import { useGame } from '../game/store';
 import { CLUES } from '../game/data/clues';
 import { ENDINGS } from '../game/sim/endings';
+import { clearRun, loadRun } from '../game/save';
+import type { StartOptions } from '../game/Game';
 import { ash, blood, bone, fonts } from '../theme';
 
 export default function Play() {
@@ -41,7 +43,9 @@ export default function Play() {
     return () => { back.remove(); app.remove(); };
   }, []);
   // dev builds only: /play?layer=3&match=1&yaw=1.5 starts a run inside a layer for testing
-  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string; frame?: string; bench?: string; quality?: string }>();
+  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string; frame?: string; bench?: string; quality?: string; start?: string; resume?: string }>();
+  // a shortcut to a layer reached before (/play?start=4), or a saved run (/play?resume=1); read once per run
+  const [opening] = useState<StartOptions>(() => params.resume === '1' ? { resume: loadRun() ?? undefined } : params.start ? { layer: Number(params.start) } : {});
   // dev only: /play?frame=1080x1920 renders at a fixed pixel size (trailer shots), whatever the window is
   const frame = __DEV__ && params.frame ? params.frame.split('x').map(Number) : null;
   const ratio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -56,8 +60,8 @@ export default function Play() {
 
   return (
     <View style={[styles.root, frame && { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: frame[0] / ratio, height: frame[1] / ratio }]}>
-      <GameView key={runKey} paused={!!clue || !!choices || paused} debug={debug} />
-      {paused && !end && <PauseMenu onResume={() => setPaused(false)} onQuit={() => { reset(); router.replace('/'); }} />}
+      <GameView key={runKey} paused={!!clue || !!choices || paused} debug={debug} opening={runKey === 0 ? opening : undefined} />
+      {paused && !end && <PauseMenu onResume={() => setPaused(false)} onQuit={() => { clearRun(); reset(); router.replace('/'); }} />}
       {clue && (
         <View style={styles.overlay}>
           <View style={styles.paper}>
@@ -119,8 +123,14 @@ export default function Play() {
               : end.fate === 'taken' ? (end.layer >= 5 ? 'So close to the church. The Hushmen carry you back down.' : end.layer >= 4 ? 'The Hushmen carry you back to the ledger.' : 'The Listener drags another body into the bones.') : 'Another name for the ledger.'}
           </Text>
           <Text style={styles.endStats}>
-            {end.newClues.length} new clue{end.newClues.length === 1 ? '' : 's'} · {end.saved} saved · {end.abandoned} left behind · {useGame.getState().meta.clues.length}/{CLUES.length} clues in the ledger
+            {end.newClues.length} {end.newClues.length === 1 ? 'new clue' : 'new clues'} · {end.saved} saved · {end.abandoned} left behind · {useGame.getState().meta.clues.length}/{CLUES.length} clues in the ledger
           </Text>
+          {end.cause && (
+            <View style={styles.lesson}>
+              <Text style={styles.lessonCause}>{end.cause}</Text>
+              {end.tip && <Text style={styles.lessonTip}>{end.tip}</Text>}
+            </View>
+          )}
           <View style={styles.endButtons}>
             <Pressable onPress={() => { reset(); setStoryRead(false); setRunKey((k) => k + 1); }} style={styles.btn}><Text style={styles.btnText}>Wake again</Text></Pressable>
             <Pressable onPress={() => router.replace('/ledger')} style={[styles.btn, styles.secondary]}><Text style={styles.btnText}>The ledger</Text></Pressable>
@@ -176,6 +186,9 @@ const styles = StyleSheet.create({
   endTitle: { fontFamily: fonts.creepster, fontSize: 34, color: blood, textAlign: 'center' },
   endName: { marginTop: 14, fontFamily: fonts.nosifer, fontSize: 22, color: bone },
   endLine: { marginTop: 10, color: ash, fontSize: 15, textAlign: 'center' },
+  lesson: { marginTop: 16, maxWidth: 520, paddingVertical: 10, paddingHorizontal: 14, borderLeftWidth: 2, borderLeftColor: 'rgba(224,160,80,0.6)', backgroundColor: 'rgba(255,255,255,0.03)' },
+  lessonCause: { color: bone, fontSize: 14, fontWeight: '600' },
+  lessonTip: { color: ash, fontSize: 13, lineHeight: 19, marginTop: 4 },
   endStats: { marginTop: 8, color: 'rgba(143,133,122,0.8)', fontSize: 12, letterSpacing: 0.5 },
   endButtons: { flexDirection: 'row', gap: 12, marginTop: 26 },
   btn: { paddingVertical: 12, paddingHorizontal: 22, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(163,18,14,0.75)', alignItems: 'center', backgroundColor: 'rgba(20,4,4,0.6)' },

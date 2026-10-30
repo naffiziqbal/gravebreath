@@ -15,7 +15,7 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
 const POST_FRAG = /* glsl */ `
 uniform sampler2D tScene;
 uniform vec2 uRes;
-uniform float uAir, uPanic, uPulse, uFade, uFlash, uTime;
+uniform float uAir, uPanic, uPulse, uFade, uFlash, uTime, uGamma;
 varying vec2 vUv;
 
 // interleaved gradient noise: stable at the lower float precision many Android GPUs use
@@ -28,6 +28,7 @@ void main() {
   // chromatic split and blur creep in as air runs out
   vec2 ca = c * (0.004 + 0.012 * suffocate * suffocate);
   vec3 col = vec3(texture2D(tScene, vUv + ca).r, texture2D(tScene, vUv).g, texture2D(tScene, vUv - ca).b);
+  col = pow(max(col, vec3(0.0)), vec3(uGamma)); // the player's brightness setting
   if (suffocate > 0.0) {
     float r = 0.004 * suffocate;
     vec3 blur = texture2D(tScene, vUv + vec2(r, 0.0)).rgb + texture2D(tScene, vUv - vec2(r, 0.0)).rgb
@@ -100,7 +101,7 @@ export class Renderer {
       uniforms: {
         tScene: { value: this.target.texture },
         uRes: { value: new THREE.Vector2(this.width, this.height) },
-        uAir: { value: 1 }, uPanic: { value: 0 }, uPulse: { value: 0 }, uFade: { value: 1 }, uFlash: { value: 0 }, uTime: { value: 0 },
+        uAir: { value: 1 }, uPanic: { value: 0 }, uPulse: { value: 0 }, uFade: { value: 1 }, uFlash: { value: 0 }, uTime: { value: 0 }, uGamma: { value: 1 },
       },
       depthTest: false,
       depthWrite: false,
@@ -135,6 +136,8 @@ export class Renderer {
     this.scale = next;
     this.target.setSize(Math.round(this.width * next), Math.round(this.height * next));
   }
+
+  setGamma(g: number) { this.post.uniforms.uGamma.value = g; }
 
   /** Graphics quality: the highest internal resolution allowed (never narrower than minWidth pixels) and the floor. */
   setQualityLimits(maxScale: number, minWidth: number, minScale: number) {

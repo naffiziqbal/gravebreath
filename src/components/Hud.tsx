@@ -1,9 +1,11 @@
 // On-screen controls and readouts. Kept sparse: the darkness and the breathing are the real HUD.
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Game } from '../game/Game';
 import { useGame } from '../game/store';
-import { blood, bone, fonts } from '../theme';
+import { ash, blood, bone, fonts } from '../theme';
+import { LOADING_LINES } from '../game/data/hints';
+import { BUTTON_SCALE } from '../game/settings';
 import { ActionPad } from './ActionPad';
 import type { KEYS } from './useDesktopControls';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,15 +13,25 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeof KEYS }) {
   const hud = useGame((s) => s.hud);
   const subtitle = useGame((s) => (s.settings.subtitles ? s.subtitle : null));
+  const hint = useGame((s) => s.hint);
+  const settings = useGame((s) => s.settings);
+  const [loadingLine] = useState(() => LOADING_LINES[Math.floor(Math.random() * LOADING_LINES.length)]);
   const g = () => game.current;
   // if the button disappears mid-hold, its release never fires; let go for the player
   useEffect(() => {
     if (!hud.action) game.current?.setInput({ interact: false });
   }, [hud.action, game]);
+  // a tip stays long enough to read, then fades away on its own
+  useEffect(() => {
+    if (!hint) return;
+    const t = setTimeout(() => useGame.getState().hideHint(), 4000 + hint.length * 45);
+    return () => clearTimeout(t);
+  }, [hint]);
   if (hud.phase === 'loading') {
     return (
       <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
         <Text style={styles.loading}>Your eyes adjust to the dark…</Text>
+        <Text style={styles.lore}>{loadingLine}</Text>
       </View>
     );
   }
@@ -37,6 +49,12 @@ export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeo
         <MaterialCommunityIcons name="pause" size={20} color="rgba(228,216,196,0.75)" />
       </Pressable>
       {subtitle && <Text style={styles.subtitle} pointerEvents="none">{subtitle}</Text>}
+      {hint && (
+        <Pressable style={styles.hint} onPress={() => useGame.getState().hideHint()} accessibilityRole="button" accessibilityLabel={hint}>
+          <MaterialCommunityIcons name="lightbulb-on-outline" size={16} color="#e0a050" />
+          <Text style={styles.hintText}>{hint}</Text>
+        </Pressable>
+      )}
 
       {hud.prompt && (
         <View style={styles.promptWrap} pointerEvents="none">
@@ -49,6 +67,7 @@ export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeo
 
       <ActionPad
         action={hud.action} holdAction={hud.holdAction} progress={hud.progress} keys={keys}
+        scale={BUTTON_SCALE[settings.buttonSize]} opacity={settings.buttonOpacity} mirrored={settings.leftHanded}
         matches={hud.matches} matchLit={hud.matchLit} battery={hud.battery} phoneOn={hud.phoneOn}
         onAction={(down) => g()?.setInput({ interact: down })}
         onMatch={() => g()?.lightMatch()}
@@ -89,6 +108,9 @@ function NoiseMeter({ level, hunted, huntedLabel }: { level: number; hunted: boo
 const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   loading: { color: bone, fontFamily: fonts.creepster, fontSize: 26, opacity: 0.7 },
+  lore: { marginTop: 14, color: ash, fontSize: 14, fontStyle: 'italic', textAlign: 'center', maxWidth: 520, paddingHorizontal: 16 },
+  hint: { position: 'absolute', top: 44, alignSelf: 'center', maxWidth: 460, flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(10,6,5,0.78)', borderWidth: 1, borderColor: 'rgba(224,160,80,0.35)' },
+  hintText: { flexShrink: 1, color: bone, fontSize: 13, lineHeight: 18 },
   airWrap: { position: 'absolute', top: 14, alignSelf: 'center', width: 220, height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' },
   air: { height: 3 },
   room: { position: 'absolute', top: 24, alignSelf: 'center', color: 'rgba(220,210,200,0.45)', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' },

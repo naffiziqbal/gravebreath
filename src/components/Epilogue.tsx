@@ -7,7 +7,8 @@ import { ash, blood, bone, fonts } from '../theme';
 const HOLD = 5200; // ms each passage stays before the next one comes
 
 export function Epilogue({ ending, onDone }: { ending: Ending; onDone(): void }) {
-  const { title, story } = ENDINGS[ending];
+  const title = ENDINGS[ending].title;
+  const story = ENDINGS[ending].story;
   const [shown, setShown] = useState(1);
   const [fades] = useState(() => story.map(() => new Animated.Value(0)));
   const done = shown >= story.length;
