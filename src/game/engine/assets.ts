@@ -16,6 +16,21 @@ export type GL = WebGL2RenderingContext & { endFrameEXP?: () => void };
 
 export type MaterialMaps = { map: THREE.Texture; normalMap: THREE.Texture; arm: THREE.Texture };
 
+/**
+ * A real file for an asset. In Android release builds expo-asset marks images as already downloaded and sets localUri
+ * to a bare resource name, which expo-gl cannot read (it needs file://, and silently makes an empty texture otherwise).
+ * Clearing those flags makes downloadAsync copy the file out of the APK into the cache.
+ */
+async function assetFile(module: number): Promise<Asset> {
+  const asset = Asset.fromModule(module);
+  if (Platform.OS !== 'web' && asset.localUri && !asset.localUri.startsWith('file://')) {
+    asset.downloaded = false;
+    asset.localUri = null;
+  }
+  await asset.downloadAsync();
+  return asset;
+}
+
 export class Assets {
   private textures = new Map<string, Promise<THREE.Texture>>();
   private models = new Map<ModelName, Promise<THREE.Group>>();
@@ -45,8 +60,7 @@ export class Assets {
       listener: { bin: require('../../../assets/game/listener/listener.bin'), json: require('../../../assets/game/listener/listener.json') },
       hushman: { bin: require('../../../assets/game/hushman/hushman.bin'), json: require('../../../assets/game/hushman/hushman.json') },
     }[which];
-    const asset = Asset.fromModule(files.bin);
-    await asset.downloadAsync();
+    const asset = await assetFile(files.bin);
     const buffer = Platform.OS === 'web'
       ? await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer()
       : await new File(asset.localUri ?? asset.uri).arrayBuffer();
@@ -64,8 +78,7 @@ export class Assets {
   }
 
   private async loadTexture(module: number, srgb: boolean): Promise<THREE.Texture> {
-    const asset = Asset.fromModule(module);
-    await asset.downloadAsync();
+    const asset = await assetFile(module);
     let tex: THREE.Texture;
     if (Platform.OS === 'web') {
       tex = await new THREE.TextureLoader().loadAsync(asset.localUri ?? asset.uri);
@@ -96,8 +109,7 @@ export class Assets {
 
   private async loadModel(name: ModelName): Promise<THREE.Group> {
     const m = MODELS[name];
-    const asset = Asset.fromModule(m.glb);
-    await asset.downloadAsync();
+    const asset = await assetFile(m.glb);
     const data = Platform.OS === 'web'
       ? await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer()
       : await new File(asset.localUri ?? asset.uri).arrayBuffer();

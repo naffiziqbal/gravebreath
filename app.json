@@ -21,9 +21,8 @@
       "predictiveBackGestureEnabled": false,
       "package": "bd.nexusbenders.gravebreath",
       "versionCode": 1,
-      "permissions": [
+      "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
@@ -33,7 +32,14 @@
     },
     "plugins": [
       "expo-asset",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
       "expo-router",
       [
         "expo-font",
@@ -59,6 +65,14 @@
           "dark": {
             "backgroundColor": "#000000",
             "image": "./assets/splash-icon.png"
+          }
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "# expo-gl native code looks up GLContext.flush() by name through JNI\n-keep class expo.modules.gl.** { *; }\n"
           }
         }
       ]
