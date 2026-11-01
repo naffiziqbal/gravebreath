@@ -46,7 +46,7 @@ export const DIG = {
   /** exertion seconds of pushing needed to break the coffin lid */
   coffinLid: 4,
   /** exertion seconds to dig out a buried survivor */
-  survivor: 18,
+  survivor: 12,
 };
 
 export const RENDER = {

@@ -4,14 +4,18 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useKeepAwake } from 'expo-keep-awake';
 import { AppState, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GameView } from '../components/GameView';
-import { Epilogue } from '../components/Epilogue';
+import { Epilogue, Passages } from '../components/Epilogue';
+import { BURIAL_CARDS, JOB_CARDS } from '../game/data/story';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { useGame } from '../game/store';
 import { CLUES } from '../game/data/clues';
 import { ENDINGS } from '../game/sim/endings';
 import { clearRun, loadRun } from '../game/save';
+import { trace } from '../game/trace';
 import type { StartOptions } from '../game/Game';
 import { ash, blood, bone, fonts } from '../theme';
+
+trace('play code loaded');
 
 export default function Play() {
   useKeepAwake();
@@ -24,6 +28,7 @@ export default function Play() {
   const [runKey, setRunKey] = useState(0);
   const [truthRead, setTruthRead] = useState(false);
   const [storyRead, setStoryRead] = useState(false);
+  const cards = useGame((s) => s.cards);
   const paused = useGame((s) => s.paused);
   const setPaused = useGame((s) => s.setPaused);
 
@@ -32,20 +37,21 @@ export default function Play() {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
       const s = useGame.getState();
       if (s.end) return false; // on the end screen, back leaves as usual
+      if (s.cards) return true;
       if (s.clue) { s.showClue(null); return true; }
       if (!s.choices) s.setPaused(!s.paused);
       return true;
     });
     const app = AppState.addEventListener('change', (st) => {
       const s = useGame.getState();
-      if (st !== 'active' && !s.end && !s.choices && s.hud.phase !== 'loading') s.setPaused(true);
+      if (st !== 'active' && !s.end && !s.choices && !s.cards && s.hud.phase !== 'loading') s.setPaused(true);
     });
     return () => { back.remove(); app.remove(); };
   }, []);
   // dev builds only: /play?layer=3&match=1&yaw=1.5 starts a run inside a layer for testing
-  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string; frame?: string; bench?: string; quality?: string; start?: string; resume?: string }>();
+  const params = useLocalSearchParams<{ layer?: string; match?: string; phone?: string; yaw?: string; listener?: string; seed?: string; autoplay?: string; frame?: string; bench?: string; quality?: string; start?: string; resume?: string; job?: string }>();
   // a shortcut to a layer reached before (/play?start=4), or a saved run (/play?resume=1); read once per run
-  const [opening] = useState<StartOptions>(() => params.resume === '1' ? { resume: loadRun() ?? undefined } : params.start ? { layer: Number(params.start) } : {});
+  const [opening] = useState<StartOptions>(() => params.resume === '1' ? { resume: loadRun() ?? undefined } : params.start ? { layer: Number(params.start) } : params.job === '1' ? { job: true } : {});
   // dev only: /play?frame=1080x1920 renders at a fixed pixel size (trailer shots), whatever the window is
   const frame = __DEV__ && params.frame ? params.frame.split('x').map(Number) : null;
   const ratio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -61,7 +67,11 @@ export default function Play() {
   return (
     <View style={[styles.root, frame && { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: frame[0] / ratio, height: frame[1] / ratio }]}>
       <GameView key={runKey} paused={!!clue || !!choices || paused} debug={debug} opening={runKey === 0 ? opening : undefined} />
-      {paused && !end && <PauseMenu onResume={() => setPaused(false)} onQuit={() => { clearRun(); reset(); router.replace('/'); }} />}
+      {cards && (
+        <Passages key={cards.kind} story={cards.kind === 'job' ? JOB_CARDS : BURIAL_CARDS} closing={cards.kind === 'job' ? 'tap to begin' : 'tap to wake'}
+          onDone={() => { const { done } = cards; useGame.getState().showCards(null); setPaused(false); done(); }} />
+      )}
+      {paused && !end && !cards && <PauseMenu onResume={() => setPaused(false)} onQuit={() => { clearRun(); reset(); router.replace('/'); }} />}
       {clue && (
         <View style={styles.overlay}>
           <View style={styles.paper}>
@@ -76,7 +86,7 @@ export default function Play() {
           <View style={styles.paper}>
             <Text style={styles.clueTitle}>The ledger</Text>
             <Text style={styles.clueText}>
-              {'Forty-one names, and your own at the bottom in ink still wet.\n\nOn the first page, the undertaker\'s: T.V., the last of the Order who tried to stop them, buried first of all. Every scratch on every lid, every DON\'T WASTE IT, was theirs.\n\nThe Hushmen have stopped walking. They are waiting to see what you do with the book.'}
+              {'Forty-one names, and your own at the bottom in ink still wet. Beside it, in a hand you know: "Delivered by C. Rusk. Paid in full."\n\nOn the first page, the undertaker\'s: T.V., the last of the Order who tried to stop them, buried first of all. Every scratch on every lid, every DON\'T WASTE IT, was theirs.\n\nThe Hushmen have stopped walking. They are waiting to see what you do with the book.'}
             </Text>
             <Pressable onPress={() => setTruthRead(true)} style={styles.btn}><Text style={styles.btnText}>Close the book</Text></Pressable>
           </View>

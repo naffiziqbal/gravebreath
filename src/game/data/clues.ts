@@ -33,6 +33,7 @@ export const CLUES: Clue[] = [
   { id: 'nec-roster', kind: 'item', act: 1, title: 'Roster of the Order', text: 'Twelve names in two columns. One is scratched out so hard the paper tore: T. V.\nBeside it, in another hand: "Buried first. Still writing."' },
   { id: 'nec-chapel', kind: 'gravestone', act: 2, title: 'Plaque at the chapel gate', text: 'THE WATER RISES WHEN THE DEEP IS HUNGRY.\nIt has reached the third step.' },
   { id: 'nec-bells', kind: 'ledger', act: 2, title: 'Bell-ringer\'s note', text: 'If one ever climbs past the chapel, ring nothing. The bells call the whole Order.' },
+  { id: 'ledger-rusk', kind: 'ledger', act: 1, title: 'Ledger page, a receipt', text: 'Paid to C. Rusk, for names delivered: nine, over six years.\nHe brings them himself. They trust him right up to the gate.' },
   { id: 'ledger-page-final', kind: 'ledger', act: 3, title: 'The first page', text: 'Before Elias, before Ruth, one name in a different ink: the undertaker\'s own.\nThe handwriting matches the scratches on every lid.' },
 ];
 

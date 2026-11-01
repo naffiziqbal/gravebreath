@@ -7,6 +7,8 @@ import { clearRun, loadMeta, saveMeta } from './save';
 import { loadSettings, saveSettings, type Settings } from './settings';
 
 export type Hud = {
+  objective: string | null; // the chapter, and what you are trying to do in it
+  job: boolean; // the opening robbery: you can still breathe, so no air bar
   phase: 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'surface' | 'over';
   air: number; // 0..1
   panic: number;
@@ -37,6 +39,8 @@ type Store = {
   chosen: Ending | null; // what the player picked; GameView hands it to the game
   paused: boolean; // the pause menu is open
   hint: string | null; // a one-time tip on screen
+  loadProgress: number; // 0..1, how far the opening load has got
+  cards: { kind: 'job' | 'burial'; done(): void } | null; // story passages over black
   settings: Settings;
   meta: Meta;
   setHud(h: Hud): void;
@@ -46,13 +50,15 @@ type Store = {
   choose(c: Ending[] | null): void;
   pick(e: Ending): void;
   setPaused(p: boolean): void;
+  setLoadProgress(p: number): void;
+  showCards(c: Store['cards']): void;
   showHint(id: string, text: string): void;
   hideHint(): void;
   updateSettings(s: Partial<Settings>): void;
   reset(): void;
 };
 
-const initialHud: Hud = { phase: 'loading', air: 1, panic: 0, matches: 0, matchLit: false, battery: 1, phoneOn: false, prompt: null, action: null, holdAction: false, progress: null, room: null, noise: null, hunted: false, seen: null, debug: null };
+const initialHud: Hud = { objective: null, job: false, phase: 'loading', air: 1, panic: 0, matches: 0, matchLit: false, battery: 1, phoneOn: false, prompt: null, action: null, holdAction: false, progress: null, room: null, noise: null, hunted: false, seen: null, debug: null };
 
 export const useGame = create<Store>((set) => ({
   hud: initialHud,
@@ -63,6 +69,8 @@ export const useGame = create<Store>((set) => ({
   chosen: null,
   paused: false,
   hint: null,
+  loadProgress: 0,
+  cards: null,
   settings: loadSettings(),
   meta: loadMeta(),
   setHud: (hud) => set({ hud }),
@@ -78,6 +86,8 @@ export const useGame = create<Store>((set) => ({
   choose: (choices) => set({ choices }),
   pick: (chosen) => set({ chosen, choices: null }),
   setPaused: (paused) => set({ paused }),
+  setLoadProgress: (loadProgress) => set({ loadProgress }),
+  showCards: (cards) => set({ cards }),
   showHint: (id, text) => set((st) => {
     // remember it at once, so it never shows again even if this run is abandoned
     const meta = st.meta.hints.includes(id) ? st.meta : { ...st.meta, hints: [...st.meta.hints, id] };
@@ -86,5 +96,5 @@ export const useGame = create<Store>((set) => ({
   }),
   hideHint: () => set({ hint: null }),
   updateSettings: (s) => set((st) => { const settings = { ...st.settings, ...s }; saveSettings(settings); return { settings }; }),
-  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null, choices: null, chosen: null, paused: false, hint: null }),
+  reset: () => set({ hud: initialHud, subtitle: null, clue: null, end: null, choices: null, chosen: null, paused: false, hint: null, cards: null, loadProgress: 0 }),
 }));

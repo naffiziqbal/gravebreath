@@ -11,6 +11,7 @@ import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { MODELS, TEXTURES, type ModelName, type TextureName } from './manifest';
 import type { SkinnedData } from './skinned';
+import { trace } from '../trace';
 
 export type GL = WebGL2RenderingContext & { endFrameEXP?: () => void };
 
@@ -23,7 +24,8 @@ export type MaterialMaps = { map: THREE.Texture; normalMap: THREE.Texture; arm: 
  */
 async function assetFile(module: number): Promise<Asset> {
   const asset = Asset.fromModule(module);
-  if (Platform.OS !== 'web' && asset.localUri && !asset.localUri.startsWith('file://')) {
+  if (Platform.OS === 'web') return asset; // the browser fetches asset.uri itself; downloading first would fetch it twice
+  if (asset.localUri && !asset.localUri.startsWith('file://')) {
     asset.downloaded = false;
     asset.localUri = null;
   }
@@ -34,6 +36,19 @@ async function assetFile(module: number): Promise<Asset> {
 export class Assets {
   private textures = new Map<string, Promise<THREE.Texture>>();
   private models = new Map<ModelName, Promise<THREE.Group>>();
+  private skinned = new Map<string, Promise<SkinnedData>>();
+  /** files asked for and files ready, for the loading screen */
+  private started = 0;
+  private done = 0;
+  onProgress?: (done: number, started: number) => void;
+  get fileCount() { return this.started; }
+
+  private counted<T>(p: Promise<T>): Promise<T> {
+    this.started++;
+    const finish = () => { this.done++; this.onProgress?.(this.done, this.started); };
+    p.then(finish, finish);
+    return p;
+  }
 
   constructor(private renderer: THREE.WebGLRenderer, private gl: GL) {}
 
@@ -41,7 +56,7 @@ export class Assets {
     const key = `${module}:${srgb}`;
     let p = this.textures.get(key);
     if (!p) {
-      p = this.loadTexture(module, srgb);
+      p = this.counted(this.loadTexture(module, srgb));
       this.textures.set(key, p);
     }
     return p;
@@ -54,7 +69,16 @@ export class Assets {
   }
 
   /** A sculpted, skinned mesh: the first-person hand or the Listener (tools/make_hand.py, tools/make_listener.py). */
-  async skinnedData(which: 'hand' | 'listener' | 'hushman'): Promise<SkinnedData> {
+  skinnedData(which: 'hand' | 'listener' | 'hushman'): Promise<SkinnedData> {
+    let p = this.skinned.get(which);
+    if (!p) {
+      p = this.counted(this.loadSkinned(which));
+      this.skinned.set(which, p);
+    }
+    return p;
+  }
+
+  private async loadSkinned(which: 'hand' | 'listener' | 'hushman'): Promise<SkinnedData> {
     const files = {
       hand: { bin: require('../../../assets/game/hand/hand.bin'), json: require('../../../assets/game/hand/hand.json') },
       listener: { bin: require('../../../assets/game/listener/listener.bin'), json: require('../../../assets/game/listener/listener.json') },
@@ -71,7 +95,7 @@ export class Assets {
   async model(name: ModelName): Promise<THREE.Group> {
     let p = this.models.get(name);
     if (!p) {
-      p = this.loadModel(name);
+      p = this.counted(this.loadModel(name));
       this.models.set(name, p);
     }
     return (await p).clone(true);
@@ -79,6 +103,7 @@ export class Assets {
 
   private async loadTexture(module: number, srgb: boolean): Promise<THREE.Texture> {
     const asset = await assetFile(module);
+    trace(`texture ${asset.name}`);
     let tex: THREE.Texture;
     if (Platform.OS === 'web') {
       tex = await new THREE.TextureLoader().loadAsync(asset.localUri ?? asset.uri);

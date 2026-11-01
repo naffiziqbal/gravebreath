@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { AppState, Platform, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import { Game, type DebugStart, type StartOptions } from '../game/Game';
 import { saveRun } from '../game/save';
+import { trace } from '../game/trace';
 import type { GL } from '../game/engine/assets';
 import { useGame } from '../game/store';
 import type { Settings } from '../game/settings';
@@ -17,6 +18,9 @@ import { ash, bone, fonts } from '../theme';
 
 type Stick = { id: string; ox: number; oy: number; x: number; y: number };
 const STICK_RADIUS = 60;
+
+/** Where a touch is in the view. On native that's locationX/Y; browser touches only have page coordinates. */
+const touchAt = (t: { locationX?: number; locationY?: number; pageX: number; pageY: number }) => ({ x: t.locationX ?? t.pageX, y: t.locationY ?? t.pageY });
 
 export function GameView({ paused, debug, opening }: { paused: boolean; debug?: DebugStart; opening?: StartOptions }) {
   const game = useRef<Game | null>(null);
@@ -45,6 +49,7 @@ export function GameView({ paused, debug, opening }: { paused: boolean; debug?: 
   useEffect(() => { if (chosen) game.current?.chooseEnding(chosen); }, [chosen]);
 
   const onContextCreate = async (gl: GL) => {
+    trace('gl context created');
     const store = useGame.getState();
     const g = new Game(gl, store.meta, {
       hud: (h) => useGame.getState().setHud(h),
@@ -59,11 +64,15 @@ export function GameView({ paused, debug, opening }: { paused: boolean; debug?: 
       end: (e, meta) => useGame.getState().finish(e, meta),
       choose: (c) => useGame.getState().choose(c),
       hint: (id, text) => useGame.getState().showHint(id, text),
+      loading: (p) => useGame.getState().setLoadProgress(p),
+      cards: (kind) => new Promise((done) => useGame.getState().showCards({ kind, done })),
     }, debug, opening);
     game.current = g;
+    trace('game constructed');
     g.applySettings(withDebug(useGame.getState().settings, debug));
     try {
       await g.init();
+      trace('init done');
       g.start();
       if (AUTOPILOT) runAutopilot(g);
       if (__DEV__ && debug?.autoplay) runDirector(g);
@@ -79,9 +88,10 @@ export function GameView({ paused, debug, opening }: { paused: boolean; debug?: 
     for (const t of touches(e)) {
       const id = String(t.identifier);
       const left = useGame.getState().settings.leftHanded; // left-handed: move with the right thumb
-      const inStickZone = left ? t.locationX > width.current * 0.58 : t.locationX < width.current * 0.42;
+      const at = touchAt(t);
+      const inStickZone = left ? at.x > width.current * 0.58 : at.x < width.current * 0.42;
       if (inStickZone && !stick.current) {
-        stick.current = { id, ox: t.locationX, oy: t.locationY, x: t.locationX, y: t.locationY };
+        stick.current = { id, ox: at.x, oy: at.y, x: at.x, y: at.y };
         setStickView(stick.current);
       } else {
         looks.current.set(id, { x: t.pageX, y: t.pageY });
@@ -93,7 +103,8 @@ export function GameView({ paused, debug, opening }: { paused: boolean; debug?: 
       const id = String(t.identifier);
       const s = stick.current;
       if (s && s.id === id) {
-        s.x = t.locationX; s.y = t.locationY;
+        const at = touchAt(t);
+        s.x = at.x; s.y = at.y;
         const dx = (s.x - s.ox) / STICK_RADIUS, dy = (s.y - s.oy) / STICK_RADIUS;
         const m = Math.hypot(dx, dy);
         const k = m > 1 ? 1 / m : 1;
@@ -123,7 +134,13 @@ export function GameView({ paused, debug, opening }: { paused: boolean; debug?: 
   return (
     <View style={styles.root} onLayout={(e: LayoutChangeEvent) => { width.current = e.nativeEvent.layout.width; }}>
       <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} msaaSamples={0} />
-      <View style={StyleSheet.absoluteFill} onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd} onTouchCancel={onEnd}>
+      <View style={[StyleSheet.absoluteFill, Platform.OS === 'web' && ({ touchAction: 'none' } as object)]} onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd} onTouchCancel={onEnd}>
+        {/* in a browser nobody knows the left thumb moves until they see it */}
+        {Platform.OS === 'web' && !desktop && !stickView && !loading && !ended && (
+          <View style={[styles.stickBase, styles.stickRest, settings.leftHanded ? { right: 40 } : { left: 40 }]} pointerEvents="none">
+            <Text style={styles.stickLabel}>MOVE</Text>
+          </View>
+        )}
         {stickView && (
           <>
             <View style={[styles.stickBase, { left: stickView.ox - STICK_RADIUS, top: stickView.oy - STICK_RADIUS }]} />
@@ -163,5 +180,7 @@ const styles = StyleSheet.create({
   clickToLook: { position: 'absolute', left: 0, right: 0, top: '38%', alignItems: 'center' },
   clickTitle: { fontFamily: fonts.creepster, fontSize: 30, color: bone, textShadowColor: '#000', textShadowRadius: 8 },
   clickKeys: { marginTop: 10, color: ash, fontSize: 13, lineHeight: 22, textAlign: 'center', letterSpacing: 0.5, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  stickRest: { bottom: 30, alignItems: 'center', justifyContent: 'center' },
+  stickLabel: { color: 'rgba(220,210,200,0.4)', fontSize: 11, letterSpacing: 2 },
   stickKnob: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(220,210,200,0.16)' },
 });

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { Assets } from '../engine/assets';
 import { materialFrom } from '../engine/renderer';
 import { DECALS } from '../engine/media';
-import { LECTERN, YARD_DEPTH, YARD_WIDTH, type SurfaceLayout } from '../sim/surface';
+import { ASHBY, LECTERN, YARD_DEPTH, YARD_WIDTH, type SurfaceLayout } from '../sim/surface';
 import { buildInteractable, fitFootprint, plane, type Area, type Box, type Level, type LitPoint, type LiveInteractable } from './builder';
 import { buildHushmanRig, type HushmanRig } from './hushmanRig';
 
@@ -27,6 +27,8 @@ export async function buildSurface(assets: Assets, layout: SurfaceLayout): Promi
     assets.materialMaps('graveyard_ground'), assets.materialMaps('tomb_stone'), assets.materialMaps('necropolis_wall'), assets.materialMaps('grave_dirt'),
     assets.texture(DECALS.sky, true), assets.texture(DECALS.fog, true),
   ]);
+  // the big models at once rather than one after another (the awaits below then find them ready)
+  await Promise.all([assets.model('dead_tree_trunk'), assets.model('large_castle_door'), assets.model('brass_candleholders'), assets.model('Lantern_01')]);
   const colliders: Box[] = [];
   const lit: LitPoint[] = [];
   const interactables: LiveInteractable[] = [];
@@ -213,6 +215,18 @@ export async function buildSurface(assets: Assets, layout: SurfaceLayout): Promi
   scene.add(rain);
 
   for (const it of layout.interactables) {
+    if (it.type === 'exit' && layout.job) {
+      // the Ashby tomb: a door to force, and behind it the ring, lit by a candle someone left burning
+      const object = it.to === 7
+        ? new THREE.Mesh(new THREE.BoxGeometry(0.08, 2, 1.1), new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.9 }))
+        : new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.009, 8, 20), new THREE.MeshStandardMaterial({ color: 0xe8c060, emissive: 0x6a4410, metalness: 0.9, roughness: 0.3 }));
+      object.position.set(ASHBY.x + 1.03, it.to === 7 ? 1 : 1.05, ASHBY.z);
+      if (it.to === 8) { object.rotation.y = Math.PI / 2; object.visible = false; }
+      scene.add(object);
+      if (it.to === 7) lit.push({ pos: new THREE.Vector3(ASHBY.doorX + 0.3, 1.2, ASHBY.z), color: 0xff9a4a, intensity: 0.5, flicker: true });
+      interactables.push({ def: it, pos: new THREE.Vector3(it.x, 0, it.z), object, label: it.to === 7 ? 'Hold to force the door' : 'Take the ring', done: it.to === 8, progress: 0, roomIndex: 0 });
+      continue;
+    }
     if (it.type === 'exit') {
       interactables.push({ def: it, pos: new THREE.Vector3(it.x, 0, it.z), object: pages, label: 'Read the ledger', done: false, progress: 0, roomIndex: 0 });
       continue;

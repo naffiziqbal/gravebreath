@@ -25,7 +25,7 @@ export function useDesktopControls(game: RefObject<Game | null>, paused: boolean
     const g = () => game.current;
     const blocked = () => {
       const s = useGame.getState();
-      return !!(s.clue || s.choices || s.end || s.paused);
+      return !!(s.clue || s.choices || s.end || s.paused || s.cards);
     };
     const move = () => {
       if (blocked()) { g()?.setInput({ moveX: 0, moveY: 0 }); return; }
@@ -115,9 +115,10 @@ export function useDesktopControls(game: RefObject<Game | null>, paused: boolean
 
   // reading a clue, choosing an ending, or the run is over: give the mouse back so the buttons can be clicked
   const end = useGame((s) => s.end);
+  const cards = useGame((s) => !!s.cards);
   useEffect(() => {
-    if (desktop && (paused || end) && typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock();
-  }, [desktop, paused, end]);
+    if (desktop && (paused || end || cards) && typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock();
+  }, [desktop, paused, end, cards]);
 
   return { desktop, locked };
 }

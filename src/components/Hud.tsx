@@ -1,6 +1,6 @@
 // On-screen controls and readouts. Kept sparse: the darkness and the breathing are the real HUD.
 import { useEffect, useState, type RefObject } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Game } from '../game/Game';
 import { useGame } from '../game/store';
 import { ash, blood, bone, fonts } from '../theme';
@@ -30,7 +30,7 @@ export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeo
   if (hud.phase === 'loading') {
     return (
       <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
-        <Text style={styles.loading}>Your eyes adjust to the dark…</Text>
+        <LoadingLine />
         <Text style={styles.lore}>{loadingLine}</Text>
       </View>
     );
@@ -38,9 +38,10 @@ export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeo
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* air: a thin bar, because breathing alone is hard to read on a phone speaker */}
-      <View style={styles.airWrap} pointerEvents="none">
+      {hud.objective && <Text style={styles.objective} pointerEvents="none" numberOfLines={2}>{hud.objective}</Text>}
+      {!hud.job && <View style={styles.airWrap} pointerEvents="none">
         <View style={[styles.air, { width: `${Math.round(hud.air * 100)}%`, backgroundColor: hud.air < 0.3 ? blood : 'rgba(220,214,204,0.55)' }]} />
-      </View>
+      </View>}
       {hud.room && <Text style={styles.room} pointerEvents="none">{hud.room}</Text>}
       {hud.noise !== null && <NoiseMeter level={hud.noise} hunted={hud.hunted} huntedLabel={hud.phase === 'necropolis' || hud.phase === 'surface' ? 'THEY SEE YOU' : 'IT HEARS YOU'} />}
       {hud.seen !== null && <SeenMeter level={hud.seen} hunted={hud.hunted} />}
@@ -79,6 +80,30 @@ export function Hud({ game, keys }: { game: RefObject<Game | null>; keys?: typeo
   );
 }
 
+/** The loading line fills with blood from the left as the files really arrive, over a faint line that shows the same. */
+function LoadingLine() {
+  const progress = useGame((s) => s.loadProgress);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [fill] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(fill, { toValue: progress, duration: 280, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+  }, [progress, fill]);
+  const width = fill.interpolate({ inputRange: [0, 1], outputRange: [0, size.width] });
+  return (
+    <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}>
+      <Text style={styles.loading} numberOfLines={1} onLayout={(e) => setSize(e.nativeEvent.layout)}>{LOADING_TEXT}</Text>
+      {size.width > 0 && (
+        <Animated.View style={[styles.loadingFill, { width, height: size.height }]}>
+          <Text style={[styles.loading, styles.loadingRed, { width: size.width }]} numberOfLines={1}>{LOADING_TEXT}</Text>
+        </Animated.View>
+      )}
+      <View style={styles.loadingTrack}><Animated.View style={[styles.loadingBar, { width }]} /></View>
+    </View>
+  );
+}
+
+const LOADING_TEXT = 'Your eyes adjust to the dark…';
+
 /** How close a Hushman is to spotting you: an eye that opens as the bar fills; red during a chase. */
 function SeenMeter({ level, hunted }: { level: number; hunted: boolean }) {
   const color = hunted ? blood : level > 0.5 ? '#e0a050' : 'rgba(228,216,196,0.7)';
@@ -108,11 +133,16 @@ function NoiseMeter({ level, hunted, huntedLabel }: { level: number; hunted: boo
 const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   loading: { color: bone, fontFamily: fonts.creepster, fontSize: 26, opacity: 0.7 },
+  loadingFill: { position: 'absolute', left: 0, top: 0, overflow: 'hidden' },
+  loadingRed: { color: blood, opacity: 1 },
+  loadingTrack: { marginTop: 8, height: 1, backgroundColor: 'rgba(228,216,196,0.08)' },
+  loadingBar: { height: 1, backgroundColor: blood },
   lore: { marginTop: 14, color: ash, fontSize: 14, fontStyle: 'italic', textAlign: 'center', maxWidth: 520, paddingHorizontal: 16 },
   hint: { position: 'absolute', top: 44, alignSelf: 'center', maxWidth: 460, flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(10,6,5,0.78)', borderWidth: 1, borderColor: 'rgba(224,160,80,0.35)' },
   hintText: { flexShrink: 1, color: bone, fontSize: 13, lineHeight: 18 },
   airWrap: { position: 'absolute', top: 14, alignSelf: 'center', width: 220, height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' },
   air: { height: 3 },
+  objective: { position: 'absolute', top: 12, left: 62, maxWidth: 200, color: 'rgba(228,216,196,0.7)', fontSize: 11, lineHeight: 15 },
   room: { position: 'absolute', top: 24, alignSelf: 'center', color: 'rgba(220,210,200,0.45)', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' },
   noise: { position: 'absolute', top: 44, alignSelf: 'center', alignItems: 'center' },
   noiseLabel: { color: 'rgba(228,216,196,0.5)', fontSize: 9, letterSpacing: 2, marginBottom: 3 },

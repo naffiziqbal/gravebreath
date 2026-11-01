@@ -27,6 +27,8 @@ import { deathLesson } from './sim/lessons';
 import type { RunSnapshot } from './save';
 import { DIG, PLAYER, RENDER } from './config';
 import type { Hud, RunEnd } from './store';
+import { trace } from './trace';
+import { OBJECTIVES } from './data/story';
 import { QUALITY, brightnessGamma, type Quality, type Settings } from './settings';
 
 export type GameEvents = {
@@ -37,20 +39,27 @@ export type GameEvents = {
   end(e: RunEnd, meta: Meta): void;
   /** a one-time tip, the first time something matters */
   hint(id: HintId, text: string): void;
+  /** 0..1, how far the opening load has got */
+  loading(p: number): void;
   /** You reached the ledger knowing the truth: the UI shows it and asks which ending (see chooseEnding). */
   choose(choices: Ending[]): void;
+  /** Story passages over black; resolves when the player has read them. */
+  cards(kind: 'job' | 'burial'): Promise<void>;
 };
 
 /** Dev-only shortcuts for testing a layer directly (set from the play screen's URL in dev builds). */
 export type DebugStart = { layer?: number; match?: boolean; phone?: boolean; yaw?: number; listenerNear?: boolean; seed?: number; autoplay?: boolean; bench?: boolean; quality?: Quality };
 
 /** How a run begins: a shortcut to a layer you've reached before, or a run resumed after the app was closed. */
-export type StartOptions = { layer?: number; resume?: RunSnapshot };
+export type StartOptions = { layer?: number; resume?: RunSnapshot; job?: boolean };
+
+type Job = 'walk' | 'door' | 'ring' | 'run' | 'caught';
 
 export type Input = { moveX: number; moveY: number; calming: boolean; holdingBreath: boolean; interact: boolean };
 
 type Phase = 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'surface' | 'over';
 
+const EXPECTED_FILES = { job: 95, full: 81 }; // see Assets.onProgress
 const POOL = 3; // world point lights, fixed count so shaders never recompile mid-run
 const LOUDEST = 13; // metres; the noise meter is full at this hearing radius
 
@@ -136,6 +145,8 @@ export class Game {
   private hintsShown: Set<string>;
   private nearestHushman = { x: 0, z: 0 };
   private danger = 0; // 0..1, how close something is to taking you: drives the tension score
+  private job: Job | null = null; // the opening robbery, played on the graveyard before the first coffin
+  private doorStroke = 0;
   private scareTimer = 40; // seconds to the next small scare (a whisper, a knock, a candle going out)
   private caughtLit = false; // was your light on when a Hushman caught you (for the death screen's tip)
 
@@ -174,20 +185,38 @@ export class Game {
 
   async init() {
     const t0 = Date.now();
-    const mark = (what: string) => { if (__DEV__) console.log(`[game] ${what} at ${Date.now() - t0} ms`); };
+    // the files are only discovered as levels are built, so judge against what this start usually needs
+    const expected = this.opening.job ? EXPECTED_FILES.job : EXPECTED_FILES.full;
+    let shown = 0;
+    this.assets.onProgress = (done, started) => {
+      const p = 0.9 * Math.min(1, done / Math.max(started, expected));
+      if (p > shown + 0.01) { shown = p; this.events.loading(p); }
+    };
+    const mark = (what: string) => { trace(what); if (__DEV__) console.log(`[game] ${what} at ${Date.now() - t0} ms, ${this.assets.fileCount} files`); };
+    trace('sound opening');
     await this.sound.init();
+    trace('hands loading');
     await this.hands.init(this.assets);
     mark('sound and hands ready');
     const [coffin, crypt] = await Promise.all([buildCoffin(this.assets, DECALS), buildCrypt(this.assets, this.layout)]);
     this.coffin = coffin;
     this.crypt = crypt;
     mark('world built');
+    await this.paintProgress();
     // warm up shaders for both scenes so the break-out has no hitch
     this.attach(this.crypt.scene);
     this.renderer.three.compile(this.crypt.scene, this.camera);
     this.attach(this.coffin.scene);
     this.renderer.three.compile(this.coffin.scene, this.camera);
     mark('shaders compiled');
+    if (this.opening.job) {
+      const s = await buildSurface(this.assets, generateSurface(this.run.seed, true));
+      mark('job built');
+      await this.events.cards('job');
+      await this.paintProgress();
+      this.startJob(s);
+      return;
+    }
     const snap = this.opening.resume;
     const startLayer = snap?.layer ?? this.opening.layer ?? (__DEV__ ? this.debug.layer : undefined);
     if (startLayer && startLayer >= 2) {
@@ -335,6 +364,13 @@ export class Game {
     this.scene = scene;
   }
 
+  /** Show the bar nearly full, and let that reach the screen before shader compiling freezes it. */
+  private async paintProgress() {
+    if (this.phase !== 'loading') return;
+    this.events.loading(0.95);
+    await new Promise((r) => setTimeout(r, 30));
+  }
+
   private enterCoffin() {
     this.phase = 'coffin';
     this.attach(this.coffin.scene);
@@ -357,7 +393,7 @@ export class Game {
   /** The run so far, for saving when the app goes to the background. Only while walking a level. */
   snapshot(): RunSnapshot | null {
     const level = this.level;
-    if (!this.walking || this.ended || !level) return null;
+    if (!this.walking || this.ended || !level || this.job) return null;
     return {
       version: 1, seed: this.run.seed, layer: level.layer, run: { ...this.run }, foundClues: [...this.foundClues], saved: this.saved,
       pos: { x: this.pos.x, z: this.pos.z }, yaw: this.yaw, genClues: this.levelClues[level.layer] ?? this.meta.clues,
@@ -385,6 +421,88 @@ export class Game {
     this.run = { ...this.run, air: this.run.airMax * 0.7, matches: Math.min(this.run.matches, 2) };
     setTimeout(() => this.events.say('You have been this deep before. Less air. Fewer matches.'), 4800);
     setTimeout(() => this.events.say(null), 9000);
+  }
+
+  /** The robbery: walk up, force the door, take the ring, run. Every way it can end, you end up in the coffin. */
+  private startJob(s: Surface) {
+    this.surface = s;
+    this.job = 'walk';
+    this.attach(s.scene);
+    this.renderer.three.compile(s.scene, this.camera);
+    this.hushmen = s.layout.routes.map((route, i) => spawnHushman(route, i));
+    this.applyQualityToLevels();
+    this.enterLevel(s, 'surface', 'Cole: "Left of the path, halfway up. I\'ll watch the gate."');
+  }
+
+  private updateJob(dt: number) {
+    const s = this.surface;
+    if (!s || !this.job) return;
+    const door = s.interactables[0], d = Math.hypot(door.pos.x - this.pos.x, door.pos.z - this.pos.z);
+    if (this.job === 'walk' && d < 5) {
+      this.job = 'door';
+      this.events.say('The lock is older than the town.');
+      setTimeout(() => this.events.say(null), 3500);
+    }
+    if (this.job === 'door' && this.focus === door && this.input.interact) {
+      door.progress = Math.min(1, door.progress + dt / 2.5);
+      this.doorStroke -= dt;
+      if (this.doorStroke <= 0) { this.doorStroke = 0.6; this.sound.playVariant('lid_creak', 0.7); this.events.haptic('light'); }
+      if (door.progress >= 1) {
+        door.done = true;
+        door.object.visible = false;
+        s.interactables[1].done = false;
+        s.interactables[1].object.visible = true;
+        this.job = 'ring';
+        this.sound.play('lid_break', 0.8);
+        this.events.say('Gold, on a stone shelf. Nobody has dusted it, and there is no dust.');
+        setTimeout(() => this.events.say(null), 4000);
+      }
+    }
+    if (this.job === 'run' && this.pos.z > -3) this.captureJob('Cole is at the gate, where he said he\'d be. He isn\'t alone.');
+  }
+
+  /** The ring comes off the shelf, the bell starts, and every lantern in the yard turns toward you. */
+  private springJob(it: LiveInteractable) {
+    it.done = true;
+    this.take(it, 'watch', () => {
+      this.job = 'run';
+      this.sound.play('bell_toll', 1);
+      this.sound.play('hushman_alert', 0.9);
+      this.run = scare(this.run, 0.6);
+      this.events.haptic('heavy');
+      this.events.say('A bell. Nobody rings a bell at three in the morning. Run.');
+      setTimeout(() => this.events.say(null), 4000);
+      const at = { x: this.pos.x, z: this.pos.z };
+      this.hushmen = this.hushmen.map((h) => ({ ...h, mode: 'chase', suspicion: 1, lastSeen: at }));
+    });
+  }
+
+  private captureJob(line: string) {
+    if (this.job === 'caught') return;
+    this.job = 'caught';
+    this.phase = 'over';
+    this.focus = null;
+    this.flash = 0.35;
+    this.shake = 1;
+    this.fadeTarget = 1;
+    this.events.haptic('heavy');
+    this.sound.play('hushman_alert', 0.9);
+    this.events.say(line);
+    setTimeout(() => { this.events.say(null); this.buryAfterJob(); }, 2600);
+  }
+
+  private async buryAfterJob() {
+    this.sound.play('hushman_chant_loop', 0.7);
+    const thuds = [6000, 11000, 15000, 18000].map((t) => setTimeout(() => { this.sound.play('dirt_fall', 0.8); this.sound.play('thud', 0.5); }, t));
+    await this.events.cards('burial');
+    thuds.forEach(clearTimeout);
+    this.job = null;
+    this.surface = null;
+    this.level = null;
+    this.hushmen = [];
+    this.danger = 0;
+    this.run = newRun(this.run.seed, this.meta.victims.length, unlocks(this.meta).extraMatch ? 1 : 0);
+    this.enterCoffin();
   }
 
   private enterLevel(level: Level, phase: 'crypt' | 'catacombs' | 'necropolis' | 'surface', line: string) {
@@ -513,7 +631,10 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- frame
+  private frames = 0;
   private tick(dt: number) {
+    this.frames++;
+    if (this.frames === 1 || this.frames === 30 || this.frames === 120) trace(`frame ${this.frames}${this.frames === 120 ? ' ok' : ''}`);
     this.time += dt;
     const inp = this.input;
     const mag = Math.min(1, Math.hypot(inp.moveX, inp.moveY));
@@ -539,6 +660,7 @@ export class Game {
     if (this.phase === 'catacombs') this.updateListener(dt);
     if (this.phase === 'necropolis' || this.phase === 'surface') this.updateHushmen(dt);
     if (this.phase === 'surface') this.updateSurface(dt);
+    if (this.job) this.updateJob(dt);
     if (this.walking) this.updateScares(dt);
     if (this.phase !== 'catacombs' && !this.watched) this.danger = Math.max(0, this.danger - dt * 0.3);
     if (this.phase === 'catacombs') this.cullBones();
@@ -797,7 +919,9 @@ export class Game {
         setTimeout(() => this.events.say(null), 1800);
       });
     } else if (pressed && def.type === 'exit') {
-      if (def.to === 3) this.goToCatacombs();
+      if (def.to === 7) return; // the tomb door is held, not tapped (see updateJob)
+      if (def.to === 8) this.springJob(it);
+      else if (def.to === 3) this.goToCatacombs();
       else if (def.to === 4) this.goToNecropolis();
       else if (def.to === 5) this.goToSurface();
       else if (def.to === 6) this.reachLedger(it);
@@ -935,6 +1059,7 @@ export class Game {
     if (this.chantTimer <= 0 && nearest < 9) { this.chantTimer = 3 + Math.random() * 4; const at = this.heard(this.nearestHushman.x, this.nearestHushman.z); this.sound.playAt('lantern_creak', Math.max(0, 1 - nearest / 9) * 0.6 * at.gain, at.pan); }
     // the fog drifts
     n.fog.forEach((f, k) => { const t = (f.material as THREE.MeshBasicMaterial).map!; t.offset.x += dt * 0.006 * (k + 1); t.offset.y += dt * 0.003 * (k % 2 ? -1 : 1); });
+    if (caught && this.job) { this.captureJob('A hand closes over your mouth from behind.'); return; }
     if (caught && !this.ended) {
       this.caughtLit = player.lit;
       this.flash = 0.35;
@@ -1074,16 +1199,23 @@ export class Game {
     s.setLoop('dig_loop', 0, dt, 8); // digging is heard stroke by stroke now (see Hands.onDigStroke)
   }
 
+  private objective(): string | null {
+    if (this.job === 'caught') return null;
+    if (this.job) return OBJECTIVES[this.job === 'walk' ? 'jobWalk' : this.job === 'door' ? 'jobDoor' : this.job === 'ring' ? 'jobRing' : 'jobRun'];
+    return this.phase === 'loading' || this.phase === 'over' ? null : OBJECTIVES[this.phase];
+  }
+
   private pushHud() {
     const r = this.run;
     const f = this.walking ? this.focus : null;
     const prompt = this.phase === 'coffin' ? (this.lidProgress > 0 ? 'Push the lid' : 'Hold to push the lid') : f ? f.label : null;
     const action = this.phase === 'coffin' ? 'PUSH' : f ? actionVerb(f) : null;
-    const holdAction = this.phase === 'coffin' || f?.def.type === 'survivor';
-    const progress = this.phase === 'coffin' ? (this.lidProgress > 0 ? this.lidProgress : null) : f && f.def.type === 'survivor' && f.progress > 0 ? f.progress : null;
+    const tomb = f?.def.type === 'exit' && f.def.to === 7;
+    const holdAction = this.phase === 'coffin' || f?.def.type === 'survivor' || tomb;
+    const progress = this.phase === 'coffin' ? (this.lidProgress > 0 ? this.lidProgress : null) : f && (f.def.type === 'survivor' || tomb) && f.progress > 0 ? f.progress : null;
     const area = this.walking ? this.level?.areas.find((a) => a.contains(this.pos.x, this.pos.z)) : undefined;
     this.events.hud({
-      phase: this.phase, air: airFraction(r), panic: r.panic, matches: r.matches, matchLit: r.matchTime > 0,
+      objective: this.objective(), job: !!this.job, phase: this.phase, air: airFraction(r), panic: r.panic, matches: r.matches, matchLit: r.matchTime > 0,
       battery: r.battery, phoneOn: r.phoneOn, prompt, action, holdAction, progress, room: area?.name ?? null,
       noise: this.phase === 'catacombs' || this.watched ? Math.min(1, this.noise / LOUDEST) : null,
       hunted: (this.phase === 'catacombs' && this.listener?.mode === 'hunt') || (!!this.watched && this.hushmen.some((h) => h.mode === 'chase')),
@@ -1102,7 +1234,7 @@ function actionVerb(it: LiveInteractable): string {
   switch (d.type) {
     case 'survivor': return 'DIG';
     case 'matches': return 'TAKE';
-    case 'exit': return d.to === 6 ? 'READ' : 'CLIMB';
+    case 'exit': return d.to === 6 ? 'READ' : d.to === 7 ? 'FORCE' : d.to === 8 ? 'TAKE' : 'CLIMB';
     case 'clue': return d.item === 'page' || d.item === 'stone' ? 'READ' : 'PICK UP';
   }
 }

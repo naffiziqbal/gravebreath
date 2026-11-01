@@ -9,6 +9,7 @@ export const ENDINGS: Record<Ending, { title: string; text: string; story: strin
     story: [
       'You run until the church is behind you and the lanterns are only sparks in the rain.',
       'Down the hill, Vael is asleep. There is no one awake to tell, and you would not know what to say.',
+      'At the gate there is a boot print in the mud, and a single coin Cole dropped in his hurry. You keep the coin.',
       'By morning you are on the road out of the valley, with grave dirt under your nails and the taste of it in your mouth.',
       'Behind you, under the town, a name is written in fresh ink. Somewhere a lid is closing.',
       'The ledger is still open.',

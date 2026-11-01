@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newRun, step, strikeMatch, airDrainRate, scare } from './run.ts';
 import { generateLayout, walkwayClear } from './layout.ts';
-import { generateSurface, LECTERN } from './surface.ts';
+import { ASHBY, generateSurface, LECTERN } from './surface.ts';
 import { endingChoices } from './endings.ts';
 import { deathLesson } from './lessons.ts';
 import { emptyMeta, recordRun, unlocks, victimName } from './meta.ts';
@@ -272,4 +272,12 @@ test('the death screen names the cause and gives a matching tip', () => {
   assert.match(deathLesson('taken', 4, true).cause ?? '', /light/);
   assert.match(deathLesson('taken', 5, false).tip ?? '', /tall/);
   assert.deepEqual(deathLesson('escaped', 5, false), {});
+});
+
+test('the opening robbery lays out the Ashby tomb and no ledger', () => {
+  const s = generateSurface(7, true);
+  assert.deepEqual(s.interactables.map((i) => (i.type === 'exit' ? i.to : -1)), [7, 8]);
+  assert.equal(s.tombs.filter((t) => Math.hypot(t.x - ASHBY.x, t.z - ASHBY.z) < 3.2).length, 1);
+  assert.ok(generateSurface(7).interactables.some((i) => i.type === 'exit' && i.to === 6));
+  for (const p of s.routes.flat()) assert.ok(Math.hypot(p.x - ASHBY.x, p.z - ASHBY.z) > 11, 'a patrol would see the player at the tomb');
 });

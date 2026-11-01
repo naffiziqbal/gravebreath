@@ -1,6 +1,6 @@
 // Round icon buttons in an arc around the right thumb: the action, the match, the phone, calm and hold breath.
-import { useState, type ComponentProps } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ComponentProps, type ComponentRef } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { blood, bone } from '../theme';
@@ -87,18 +87,65 @@ type RoundProps = {
   onUp?(): void;
 };
 
+/**
+ * Holding a button in a browser: a long touch makes the browser take over (long-press menu, scrolling) and cancel the
+ * press, which reads as letting go. So on web a held button follows the pointer itself, until the finger really lifts.
+ */
+function useWebHold(onDown?: () => void, onUp?: () => void) {
+  const node = useRef<ComponentRef<typeof Pressable>>(null);
+  const [held, setHeld] = useState(false);
+  const calls = useRef({ onDown, onUp });
+  useEffect(() => { calls.current = { onDown, onUp }; });
+  const holdable = Platform.OS === 'web' && !!onDown;
+  useEffect(() => {
+    if (!holdable) return;
+    const el = node.current as unknown as HTMLElement | null;
+    if (!el) return;
+    let active: number | null = null;
+    const down = (e: PointerEvent) => {
+      if (active !== null || e.button > 0) return;
+      active = e.pointerId;
+      e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch { /* still works without capture while over the button */ }
+      setHeld(true);
+      calls.current.onDown?.();
+    };
+    const up = (e: PointerEvent) => {
+      if (e.pointerId !== active) return;
+      active = null;
+      setHeld(false);
+      calls.current.onUp?.();
+    };
+    const noMenu = (e: Event) => e.preventDefault();
+    el.style.touchAction = 'none';
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('contextmenu', noMenu);
+    return () => {
+      el.removeEventListener('pointerdown', down);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      el.removeEventListener('contextmenu', noMenu);
+      if (active !== null) calls.current.onUp?.();
+    };
+  }, [holdable]);
+  return { node, held, holdable };
+}
+
 function RoundButton(b: RoundProps) {
+  const { node, held, holdable } = useWebHold(b.onDown, b.onUp);
   const r = b.size / 2;
   const ring = r - 3;
   const circ = 2 * Math.PI * ring;
   return (
     <Pressable
-      accessibilityRole="button" accessibilityLabel={b.a11y ?? b.label} disabled={b.disabled}
-      onPress={b.onPress} onPressIn={b.onDown} onPressOut={b.onUp} hitSlop={6}
+      ref={node} accessibilityRole="button" accessibilityLabel={b.a11y ?? b.label} disabled={b.disabled}
+      onPress={b.onPress} onPressIn={holdable ? undefined : b.onDown} onPressOut={holdable ? undefined : b.onUp} hitSlop={6}
       style={({ pressed }) => [
         styles.round, b.style, { width: b.size, height: b.size, borderRadius: r },
         b.active && { borderColor: b.accent, backgroundColor: `${b.accent}2e`, shadowColor: b.accent, shadowOpacity: 0.9, shadowRadius: 12 },
-        pressed && { backgroundColor: `${b.accent}55`, transform: [{ scale: 0.94 }] },
+        (pressed || held) && { backgroundColor: `${b.accent}55`, transform: [{ scale: 0.94 }] },
         b.disabled && styles.disabled,
       ]}>
       {b.progress !== undefined && b.progress !== null && (

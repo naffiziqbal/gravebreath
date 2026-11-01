@@ -7,8 +7,10 @@ import { ash, blood, bone, fonts } from '../theme';
 const HOLD = 5200; // ms each passage stays before the next one comes
 
 export function Epilogue({ ending, onDone }: { ending: Ending; onDone(): void }) {
-  const title = ENDINGS[ending].title;
-  const story = ENDINGS[ending].story;
+  return <Passages title={ENDINGS[ending].title} story={ENDINGS[ending].story} closing="tap to close the ledger" onDone={onDone} />;
+}
+
+export function Passages({ title, story, closing, onDone }: { title?: string; story: string[]; closing: string; onDone(): void }) {
   const [shown, setShown] = useState(1);
   const [fades] = useState(() => story.map(() => new Animated.Value(0)));
   const done = shown >= story.length;
@@ -28,7 +30,7 @@ export function Epilogue({ ending, onDone }: { ending: Ending; onDone(): void })
   const first = Math.max(0, shown - 4);
   return (
     <Pressable style={styles.root} onPress={() => (done ? canClose && onDone() : setShown((n) => n + 1))}>
-      <Text style={styles.title}>{title}</Text>
+      {title && <Text style={styles.title}>{title}</Text>}
       <View style={styles.body}>
         {story.slice(first, shown).map((p, i) => {
           const k = first + i;
@@ -38,7 +40,7 @@ export function Epilogue({ ending, onDone }: { ending: Ending; onDone(): void })
           );
         })}
       </View>
-      <Text style={styles.hint}>{done ? (canClose ? 'tap to close the ledger' : ' ') : 'tap to continue'}</Text>
+      <Text style={styles.hint}>{done ? (canClose ? closing : ' ') : 'tap to continue'}</Text>
     </Pressable>
   );
 }

@@ -7,6 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } fr
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useGame } from '../game/store';
 import { clearRun, loadRun } from '../game/save';
+import { lastTrace, trace } from '../game/trace';
 import { ash, blood, bone, fonts } from '../theme';
 
 export default function Title() {
@@ -14,6 +15,7 @@ export default function Title() {
   const reset = useGame((s) => s.reset);
   const settings = useGame((s) => s.settings);
   const [saved] = useState(() => loadRun()); // a run interrupted by a call or app switch
+  const [crash] = useState(() => lastTrace()); // temporary: how far the last launch got
   const [picking, setPicking] = useState(false); // the Descend panel is open
   const { width, height } = useWindowDimensions();
   // scale with the screen: a phone held sideways is often under 400 points tall
@@ -21,7 +23,7 @@ export default function Title() {
   // shortcuts: start at the entrance of any layer a past victim reached (with less air and fewer matches)
   const deepest = Math.min(5, Math.max(0, ...meta.victims.map((v) => v.layer)));
   const descend = [3, 4, 5].filter((l) => l <= deepest);
-  const go = (path: string) => { reset(); router.push(settings.calibrated ? path : `/calibrate?next=${encodeURIComponent(path)}`); };
+  const go = (path: string) => { trace(`tap ${path}`); reset(); router.push(settings.calibrated ? path : `/calibrate?next=${encodeURIComponent(path)}`); };
   useEffect(() => {
     if (AUTOPILOT) setTimeout(() => router.push('/play'), 1500);
   }, []);
@@ -38,9 +40,14 @@ export default function Title() {
               <Text style={[styles.btnText, btnText]}>Continue</Text>
             </Pressable>
           )}
-          <Pressable onPress={() => { clearRun(); go('/play'); }} style={({ pressed }) => [styles.btn, btn, saved && styles.secondary, pressed && styles.pressed]}>
+          <Pressable onPress={() => { clearRun(); go(meta.runs === 0 ? '/play?job=1' : '/play'); }} style={({ pressed }) => [styles.btn, btn, saved && styles.secondary, pressed && styles.pressed]}>
             <Text style={[styles.btnText, btnText]}>{meta.runs === 0 ? 'Wake up' : 'Wake again'}</Text>
           </Pressable>
+          {meta.runs > 0 && (
+            <Pressable onPress={() => { clearRun(); go('/play?job=1'); }} style={({ pressed }) => [styles.btn, btn, styles.secondary, pressed && styles.pressed]}>
+              <Text style={[styles.btnText, btnText]}>The job</Text>
+            </Pressable>
+          )}
           {descend.length > 0 && (
             <Pressable onPress={() => setPicking(true)} style={({ pressed }) => [styles.btn, btn, styles.secondary, pressed && styles.pressed]}>
               <Text style={[styles.btnText, btnText]}>Descend…</Text>
@@ -71,6 +78,7 @@ export default function Title() {
           </Pressable>
         </Pressable>
       )}
+      {crash && <Text style={styles.trace} pointerEvents="none">Last launch stopped at:{'\n'}{crash.slice(-5).join('\n')}</Text>}
       <Pressable onPress={() => router.push('/settings')} style={styles.gear} hitSlop={10} accessibilityRole="button" accessibilityLabel="Settings">
         <MaterialCommunityIcons name="cog" size={22} color="rgba(228,216,196,0.8)" />
       </Pressable>
@@ -94,6 +102,7 @@ const styles = StyleSheet.create({
   secondary: { borderColor: 'rgba(228,216,196,0.25)' },
   pressed: { backgroundColor: 'rgba(163,18,14,0.25)' },
   btnText: { color: bone, fontFamily: fonts.creepster, letterSpacing: 1 },
+  trace: { position: 'absolute', right: 10, bottom: 8, color: '#e0a050', fontSize: 11, textAlign: 'right' },
   veil: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.82)', alignItems: 'center', justifyContent: 'center', padding: 16 },
   sheet: { width: '100%', maxWidth: 520, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(163,18,14,0.55)', backgroundColor: 'rgba(12,6,5,0.97)' },
   sheetTitle: { fontFamily: fonts.creepster, color: blood, textAlign: 'center' },

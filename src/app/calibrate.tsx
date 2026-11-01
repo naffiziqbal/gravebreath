@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useGame } from '../game/store';
 import { brightnessGamma } from '../game/settings';
+import { trace } from '../game/trace';
 import { ash, blood, bone, fonts } from '../theme';
 
 /** Roughly how a linear scene value comes out of the game's pipeline (gamma, tone mapping, sRGB) as a grey level. */
@@ -20,7 +21,9 @@ export default function Calibrate() {
   const brightness = useGame((s) => s.settings.brightness);
   const update = useGame((s) => s.updateSettings);
   const g = brightnessGamma(brightness);
+  trace('calibrate screen');
   const done = () => {
+    trace('calibrate done');
     update({ calibrated: true });
     if (next) router.replace(next.startsWith('/') ? (next as '/play') : '/play');
     else if (router.canGoBack()) router.back();

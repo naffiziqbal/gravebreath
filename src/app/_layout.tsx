@@ -3,8 +3,13 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { Platform, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 import { MenuAmbience } from '../components/MenuAmbience';
+
+// Test builds only for now: show a JavaScript crash instead of closing silently, so it can be read off the phone.
+// Remove before the store release.
+const errors = (globalThis as { ErrorUtils?: { setGlobalHandler(h: (e: Error, fatal?: boolean) => void): void } }).ErrorUtils;
+if (!__DEV__) errors?.setGlobalHandler((e, fatal) => Alert.alert(fatal ? 'Gravebreath crashed' : 'Gravebreath error', `${e?.message}\n\n${(e?.stack ?? '').slice(0, 900)}`));
 
 export default function RootLayout() {
   const [loaded] = useFonts({

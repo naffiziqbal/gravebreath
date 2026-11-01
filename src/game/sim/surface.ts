@@ -10,6 +10,8 @@ import type { Point, Tomb } from './necropolis.ts';
 export const YARD_WIDTH = 30;
 export const YARD_DEPTH = 34;
 export const LECTERN: Point = { x: 0, z: -YARD_DEPTH + 1.5 };
+/** The opening robbery: the Ashby tomb, its door facing the path. */
+export const ASHBY = { x: -4, z: -14, doorX: -2.9 };
 
 export type SurfaceLayout = {
   seed: number;
@@ -18,11 +20,12 @@ export type SurfaceLayout = {
   routes: Point[][]; // two Hushmen guard the church
   interactables: Interactable[];
   spawn: Point;
+  job: boolean; // laid out for the opening robbery instead of the ledger
 };
 
 const PATH_HALF = 1.4; // the gravel path up the middle stays clear
 
-export function generateSurface(seed: number): SurfaceLayout {
+export function generateSurface(seed: number, job = false): SurfaceLayout {
   const rng = createRng(seed ^ 0x5e7face);
   const tombs: Tomb[] = [];
   const trees: Point[] = [];
@@ -44,5 +47,15 @@ export function generateSurface(seed: number): SurfaceLayout {
     { type: 'matches', count: 1, x: rng.chance(0.5) ? -PATH_HALF - 0.2 : PATH_HALF + 0.2, z: -6 - rng.next() * 6 },
     { type: 'exit', x: LECTERN.x, z: LECTERN.z, to: 6 }, // the ledger: reaching it ends the run (see endings.ts)
   ];
-  return { seed, tombs, trees, routes, interactables, spawn: { x: 0, z: -1 } };
+  if (job) {
+    const clear = (p: Point) => Math.hypot(p.x - ASHBY.x, p.z - ASHBY.z) > 3.2;
+    return {
+      // on the job the lanterns keep to the church, in sight but out of range, so the tomb can actually be reached
+      seed, job, spawn: { x: 0, z: -1 }, trees: trees.filter(clear),
+      routes: [porch, porch.map((p) => ({ x: p.x * 0.6, z: p.z + 2.5 }))],
+      tombs: [...tombs.filter(clear), { kind: 'mausoleum', x: ASHBY.x, z: ASHBY.z, w: 2.0, d: 2.0, h: 2.8, rotY: 0 }],
+      interactables: [{ type: 'exit', x: ASHBY.doorX, z: ASHBY.z, to: 7 }, { type: 'exit', x: ASHBY.doorX, z: ASHBY.z, to: 8 }], // the door, then the ring
+    };
+  }
+  return { seed, tombs, trees, routes, interactables, spawn: { x: 0, z: -1 }, job };
 }
