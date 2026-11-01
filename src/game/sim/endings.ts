@@ -43,6 +43,12 @@ export const ENDINGS: Record<Ending, { title: string; text: string; story: strin
   },
 };
 
+/** One more passage, near the end of the epilogue, for what you did about Cole. */
+export const COLE_ENDING = {
+  saved: 'Somewhere behind you a man is coughing grave dirt out of his lungs. You will never know whether you should have left him there.',
+  left: 'You think about the knocking under that heap. You think you always will.',
+};
+
 /** Without the final page there is no choice to make: you just escape. */
 export function endingChoices(clues: readonly string[]): Ending[] {
   return clues.includes('ledger-page-final') ? ['bells', 'undertaker'] : ['rain'];

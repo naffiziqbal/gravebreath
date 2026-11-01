@@ -14,8 +14,8 @@ export const FOOTPRINT: Partial<Record<PropKind, number>> = { rocks: 1.0, boulde
 export type Prop = { kind: PropKind; x: number; z: number; rotY: number; scale?: number; lit?: boolean };
 
 export type Interactable =
-  | { type: 'clue'; clueId: string; x: number; z: number; item: 'watch' | 'postcard' | 'page' | 'stone' }
-  | { type: 'survivor'; x: number; z: number; side: Side; trap: boolean; clueId?: string }
+  | { type: 'clue'; clueId: string; x: number; z: number; item: 'watch' | 'postcard' | 'page' | 'stone' | 'map' }
+  | { type: 'survivor'; x: number; z: number; side: Side; trap: boolean; clueId?: string; cole?: boolean }
   | { type: 'matches'; x: number; z: number; count: number }
   | { type: 'exit'; x: number; z: number; to: number };
 

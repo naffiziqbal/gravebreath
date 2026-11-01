@@ -4,11 +4,12 @@ import * as THREE from 'three';
 import type { Assets } from '../engine/assets';
 import { materialFrom } from '../engine/renderer';
 import { DECALS } from '../engine/media';
-import { ASHBY, LECTERN, YARD_DEPTH, YARD_WIDTH, type SurfaceLayout } from '../sim/surface';
+import { ASHBY, COLE_AT, LECTERN, YARD_DEPTH, YARD_WIDTH, type SurfaceLayout } from '../sim/surface';
 import { buildInteractable, fitFootprint, plane, type Area, type Box, type Level, type LitPoint, type LiveInteractable } from './builder';
 import { buildHushmanRig, type HushmanRig } from './hushmanRig';
+import { buildColeRig, type ColeRig } from './coleRig';
 
-export type Surface = Level & { layout: SurfaceLayout; hushmen: HushmanRig[]; fog: THREE.Mesh[]; rain: THREE.LineSegments; moon: THREE.DirectionalLight; sky: THREE.Mesh };
+export type Surface = Level & { cole?: ColeRig; layout: SurfaceLayout; hushmen: HushmanRig[]; fog: THREE.Mesh[]; rain: THREE.LineSegments; moon: THREE.DirectionalLight; sky: THREE.Mesh };
 
 export const RAIN = { drops: 1400, box: 14, height: 11, speed: 13, length: 0.35 };
 const FOG_COLOR = 0x0d1015;
@@ -243,12 +244,20 @@ export async function buildSurface(assets: Assets, layout: SurfaceLayout): Promi
     hushmen.push(rig);
   }
 
+  // Cole, waiting at the gate where he said he'd be
+  let cole: ColeRig | undefined;
+  if (layout.job) {
+    cole = await buildColeRig(assets);
+    cole.group.position.set(COLE_AT.x, 0, COLE_AT.z);
+    scene.add(cole.group);
+  }
+
   const areas: Area[] = [
     { name: 'The church of Vael', landmark: true, arrival: 'The church of Vael. The ledger lies open in the porch.', contains: (_x, z) => z < -D + 8 },
     { name: 'Vael graveyard', landmark: false, contains: () => true },
   ];
   return {
-    layer: 5, scene, colliders, lit, interactables, airPockets: [], dust: [], areas, layout, hushmen, fog, rain, moon, sky,
+    cole, layer: 5, scene, colliders, lit, interactables, airPockets: [], dust: [], areas, layout, hushmen, fog, rain, moon, sky,
     spawn: { pos: new THREE.Vector3(layout.spawn.x, 0, layout.spawn.z), yaw: 0 },
   };
 }

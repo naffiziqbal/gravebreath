@@ -116,6 +116,41 @@ export function generateMaze(rng: Rng, cols = 6, rows = 4): Maze {
   return m;
 }
 
+export const SCRAP_MAP = 'cat-map';
+
+export type ScrapMap = {
+  cols: number;
+  rows: number;
+  /** charcoal strokes between cell centres; y is 0 at the top of the page (the far side of the maze) */
+  lines: [number, number, number, number][];
+  exit: { x: number; y: number };
+};
+
+/** Where a world position falls on the map, in the same units as its lines. */
+export function mapSpot(m: Maze, x: number, z: number) {
+  return { x: x / CELL + (m.cols - 1) / 2, y: m.rows - 1 + z / CELL };
+}
+
+/**
+ * What the charcoal map shows: the stair, and about two thirds of the tunnels, the rest torn away or never drawn.
+ * It never shows what is hunting you. Your own position is added live by the UI (see Game.pushHud).
+ */
+export function scrapMap(seed: number, m: Maze): ScrapMap {
+  const rng = createRng(seed ^ 0x5ca7c4);
+  const drawn = new Set(rng.shuffle(m.cells).slice(0, Math.ceil(m.cells.length * 0.65)));
+  drawn.add(m.exit);
+  const at = (c: Cell): [number, number] => [c.cx, m.rows - 1 - c.cy];
+  const lines: ScrapMap['lines'] = [];
+  for (const c of drawn) {
+    for (const d of ['n', 'e'] as const) {
+      const n = c.open[d] ? cellAt(m, c.cx + STEP[d][0], c.cy + STEP[d][1]) : undefined;
+      if (n && drawn.has(n)) lines.push([...at(c), ...at(n)]);
+    }
+  }
+  const [x, y] = at(m.exit);
+  return { cols: m.cols, rows: m.rows, lines, exit: { x, y } };
+}
+
 export function generateCatacombs(seed: number, foundClues: readonly string[]): CatacombLayout {
   const rng = createRng(seed ^ 0x3c3c3c3c);
   const maze = generateMaze(rng);
@@ -138,13 +173,16 @@ export function generateCatacombs(seed: number, foundClues: readonly string[]): 
   const interactables: Interactable[] = [];
   const act = actFor(foundClues.length);
   // only the catacombs' own clues spawn here, so nothing found in the crypt can turn up twice
-  const clues = rng.shuffle(cluesForAct(act, foundClues).filter((c) => c.id.startsWith('cat-')));
+  const clues = rng.shuffle(cluesForAct(act, foundClues).filter((c) => c.id.startsWith('cat-') && c.id !== SCRAP_MAP));
   const clueCells = sideCells.slice(2);
   clues.slice(0, 2).forEach((clue, i) => {
     const item = clue.kind === 'ledger' ? 'page' : clue.kind === 'gravestone' ? 'stone' : clue.id.includes('watch') ? 'watch' : 'postcard';
     interactables.push({ type: 'clue', clueId: clue.id, item, ...spot(clueCells[i]) });
   });
   rng.shuffle(maze.cells.filter((c) => c !== maze.entrance)).slice(0, 2).forEach((c) => interactables.push({ type: 'matches', count: rng.int(1, 2), ...spot(c) }));
+  // the scrap map is always somewhere close to where you come in
+  const near = rng.shuffle(maze.cells.filter((c) => c !== maze.exit && (dist.get(c) ?? 0) >= 1 && (dist.get(c) ?? 0) <= 3));
+  interactables.push({ type: 'clue', clueId: SCRAP_MAP, item: 'map', ...spot(near[0] ?? maze.entrance) });
   const exitCentre = cellCentre(maze, maze.exit);
   interactables.push({ type: 'exit', x: exitCentre.x, z: exitCentre.z - CELL / 2 + 0.5, to: 4 });
   const candles = junctions.slice(0, 4).map((c) => {

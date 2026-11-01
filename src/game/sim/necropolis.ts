@@ -11,6 +11,13 @@ export const HALL_DEPTH = 30;
 export const HALL_HEIGHT = 7;
 export const CHAPEL = { width: 10, depth: 8, gate: 4 }; // the gate is 4 m wide in the hall's north wall
 
+export const COLE_GRAVE = { x: 0, z: -14 };
+
+/** Does he repay you for digging him out, or call the lanterns? Decided by the run, so a resumed run agrees. */
+export function coleBetrays(seed: number): boolean {
+  return createRng(seed ^ 0xc01e).chance(0.5);
+}
+
 export type TombKind = 'sarcophagus' | 'mausoleum';
 export type Tomb = { kind: TombKind; x: number; z: number; w: number; d: number; h: number; rotY: number };
 export type Point = { x: number; z: number };
@@ -65,6 +72,8 @@ export function generateNecropolis(seed: number, foundClues: readonly string[]):
     interactables.push({ type: 'clue', clueId: 'ledger-page-final', item: 'page', x: 0, z: -HALL_DEPTH - CHAPEL.depth + 1.6 });
   }
   for (let k = 0; k < 2; k++) interactables.push({ type: 'matches', count: rng.int(1, 2), ...besideTomb() });
+  // Cole, sold to the Order in his turn, under a fresh heap in the open central aisle: digging him out means being seen
+  interactables.push({ type: 'survivor', x: COLE_GRAVE.x, z: COLE_GRAVE.z, side: 'left', trap: false, cole: true });
   // the way up: stone steps behind the chapel altar
   interactables.push({ type: 'exit', x: 0, z: -HALL_DEPTH - CHAPEL.depth + 0.7, to: 5 });
 

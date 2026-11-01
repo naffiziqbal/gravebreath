@@ -165,6 +165,16 @@ export async function buildNecropolis(assets: Assets, layout: NecropolisLayout):
       interactables.push({ def: it, pos: new THREE.Vector3(it.x, 0, it.z), object: new THREE.Group(), label: 'Climb toward the bells', done: false, progress: 0, roomIndex: 0 });
       continue;
     }
+    if (it.type === 'survivor') {
+      // Cole's grave: a fresh heap in the open, with a candle stub someone left so it would be found
+      const soil = new THREE.Mesh(new THREE.SphereGeometry(0.75, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), materialFrom(await assets.materialMaps('grave_dirt'), 1.5, 1.5));
+      soil.scale.set(0.8, 0.45, 1.3);
+      soil.position.set(it.x, 0, it.z);
+      scene.add(soil);
+      lit.push({ pos: new THREE.Vector3(it.x + 0.5, 0.5, it.z + 0.9), color: 0xff9447, intensity: 0.45, flicker: true });
+      interactables.push({ def: it, pos: new THREE.Vector3(it.x, 0, it.z), object: soil, label: 'Hold to dig him out', done: false, progress: 0, roomIndex: 0 });
+      continue;
+    }
     const room = { width: 2, height: HALL_HEIGHT } as Parameters<typeof buildInteractable>[4];
     interactables.push(await buildInteractable(assets, scene, it, 0, room, { woodMaps: rockMaps, stoneMaps, wallMaps }, lit, colliders));
   }

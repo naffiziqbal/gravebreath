@@ -8,7 +8,7 @@ import { endingChoices } from './endings.ts';
 import { deathLesson } from './lessons.ts';
 import { emptyMeta, recordRun, unlocks, victimName } from './meta.ts';
 import { AIR, LIGHT } from '../config.ts';
-import { cellCentre, distances, generateCatacombs, neighbours, nextToward, sightCells } from './catacombs.ts';
+import { mapSpot, SCRAP_MAP, scrapMap, cellCentre, distances, generateCatacombs, neighbours, nextToward, sightCells } from './catacombs.ts';
 import { noiseRadius, spawnListener, stepListener } from './listener.ts';
 import { createRng } from './rng.ts';
 
@@ -171,7 +171,7 @@ test('catacomb clues only appear in the catacombs, crypt clues only in the crypt
   }
 });
 
-import { generateNecropolis, sightBlocked, HALL_DEPTH } from './necropolis.ts';
+import { coleBetrays, COLE_GRAVE, generateNecropolis, sightBlocked, HALL_DEPTH } from './necropolis.ts';
 import { canSee, spawnHushman, stepHushman, HUSHMAN } from './hushman.ts';
 
 test('necropolis layouts are reproducible, keep the central aisle clear and lead to the chapel', () => {
@@ -280,4 +280,33 @@ test('the opening robbery lays out the Ashby tomb and no ledger', () => {
   assert.equal(s.tombs.filter((t) => Math.hypot(t.x - ASHBY.x, t.z - ASHBY.z) < 3.2).length, 1);
   assert.ok(generateSurface(7).interactables.some((i) => i.type === 'exit' && i.to === 6));
   for (const p of s.routes.flat()) assert.ok(Math.hypot(p.x - ASHBY.x, p.z - ASHBY.z) > 11, 'a patrol would see the player at the tomb');
+});
+
+test('the scrap map is always near the entrance, marks the stair, and leaves parts out', () => {
+  for (const seed of [1, 7, 42, 900]) {
+    const layout = generateCatacombs(seed, []);
+    const map = layout.interactables.filter((i) => i.type === 'clue' && i.clueId === SCRAP_MAP);
+    assert.equal(map.length, 1);
+    const drawn = scrapMap(seed, layout.maze);
+    assert.deepEqual(drawn.exit, { x: layout.maze.exit.cx, y: layout.maze.rows - 1 - layout.maze.exit.cy });
+    assert.ok(drawn.lines.length > 3);
+    const all = layout.maze.cells.reduce((n, c) => n + (c.open.n ? 1 : 0) + (c.open.e ? 1 : 0), 0);
+    assert.ok(drawn.lines.length < all, 'the map must not show every tunnel');
+    assert.deepEqual(scrapMap(seed, layout.maze), drawn);
+    const start = cellCentre(layout.maze, layout.maze.entrance);
+    assert.deepEqual(mapSpot(layout.maze, start.x, start.z), { x: layout.maze.entrance.cx, y: layout.maze.rows - 1 - layout.maze.entrance.cy });
+  }
+});
+
+test('Cole is buried once in the necropolis, in the open aisle, and his choice is settled by the run', () => {
+  const outcomes = new Set<boolean>();
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+    const layout = generateNecropolis(seed, []);
+    const heaps = layout.interactables.filter((i) => i.type === 'survivor' && i.cole);
+    assert.equal(heaps.length, 1);
+    assert.ok(layout.tombs.every((t) => Math.abs(t.x - COLE_GRAVE.x) > t.w / 2 || Math.abs(t.z - COLE_GRAVE.z) > t.d / 2), 'no tomb on the heap');
+    assert.equal(coleBetrays(seed), coleBetrays(seed));
+    outcomes.add(coleBetrays(seed));
+  }
+  assert.equal(outcomes.size, 2, 'both outcomes must be possible');
 });

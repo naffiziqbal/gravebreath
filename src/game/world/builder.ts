@@ -392,6 +392,21 @@ export async function buildInteractable(
       g.add(slab, top);
       g.rotation.z = 0.08;
       object = g;
+    } else if (it.item === 'map') {
+      // a torn scrap of shroud on the floor, with charcoal tunnels on it; a faint glow so a dim light catches it
+      const g = new THREE.Group();
+      const outline = new THREE.Shape([[-0.2, -0.13], [-0.06, -0.15], [0.12, -0.12], [0.21, -0.14], [0.18, -0.02], [0.22, 0.12], [0.03, 0.15], [-0.14, 0.11], [-0.21, 0.13], [-0.18, 0]].map(([x, y]) => new THREE.Vector2(x, y)));
+      const cloth = new THREE.Mesh(new THREE.ShapeGeometry(outline), new THREE.MeshStandardMaterial({ color: 0xb9a988, emissive: 0x2a2317, roughness: 1, side: THREE.DoubleSide }));
+      g.add(cloth);
+      const charcoal = new THREE.MeshBasicMaterial({ color: 0x17120e });
+      for (const [x, y, w, h] of [[-0.05, 0.07, 0.24, 0.012], [-0.15, 0, 0.012, 0.15], [0.07, -0.01, 0.012, 0.17], [0.0, -0.08, 0.15, 0.012], [0.13, 0.02, 0.1, 0.012]]) {
+        const stroke = new THREE.Mesh(new THREE.PlaneGeometry(w, h), charcoal);
+        stroke.position.set(x, y, 0.002);
+        g.add(stroke);
+      }
+      g.rotation.set(-Math.PI / 2, 0, 0.5);
+      g.position.y = 0.02;
+      object = g;
     } else {
       object = await assets.model(it.item === 'watch' ? 'vintage_pocket_watch' : 'postcard_set_01');
       object.position.y = 0.02;

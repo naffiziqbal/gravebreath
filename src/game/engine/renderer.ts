@@ -61,8 +61,9 @@ export class Renderer {
   private postScene = new THREE.Scene();
   private postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private post: THREE.ShaderMaterial;
-  readonly width: number;
-  readonly height: number;
+  width: number;
+  height: number;
+  private limits: [number, number, number] | null = null;
   scale: number;
   private maxScale: number;
   /** the world pass of the last frame (renderer.info is reset by every render call, so it is copied here) */
@@ -129,6 +130,20 @@ export class Renderer {
     this.gl.endFrameEXP?.();
   }
 
+  /** In a browser the view can change size at any time (fullscreen, a resized window). Returns true if it just did. */
+  syncSize(): boolean {
+    if (Platform.OS !== 'web') return false;
+    const w = this.gl.drawingBufferWidth, h = this.gl.drawingBufferHeight;
+    if (!w || !h || (w === this.width && h === this.height)) return false;
+    this.width = w;
+    this.height = h;
+    this.three.setSize(w, h, false);
+    (this.post.uniforms.uRes.value as THREE.Vector2).set(w, h);
+    if (this.limits) this.setQualityLimits(...this.limits);
+    this.target.setSize(Math.round(w * this.scale), Math.round(h * this.scale));
+    return true;
+  }
+
   /** Dynamic resolution: render smaller when the frame rate drops, back up when there is headroom. */
   setScale(s: number) {
     const next = Math.max(this.minScale, Math.min(this.maxScale, s));
@@ -141,6 +156,7 @@ export class Renderer {
 
   /** Graphics quality: the highest internal resolution allowed (never narrower than minWidth pixels) and the floor. */
   setQualityLimits(maxScale: number, minWidth: number, minScale: number) {
+    this.limits = [maxScale, minWidth, minScale];
     this.maxScale = Math.min(1, Math.max(maxScale, minWidth / this.width));
     this.minScale = Math.min(minScale, this.maxScale);
     this.setScale(this.maxScale);

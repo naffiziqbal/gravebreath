@@ -32,8 +32,10 @@ export type ActionPadProps = {
   onPhone(): void;
   onCalm(down: boolean): void;
   onHoldBreath(down: boolean): void;
+  hasMap: boolean;
+  onMap(down: boolean): void;
   /** on a computer: the key for each button, shown as a small keycap */
-  keys?: { action: string; match: string; phone: string; breath: string; calm: string };
+  keys?: { action: string; match: string; phone: string; breath: string; calm: string; map: string };
   /** player settings: button size, opacity, and the left-handed layout (buttons on the left) */
   scale?: number;
   opacity?: number;
@@ -64,6 +66,10 @@ export function ActionPad(p: ActionPadProps) {
         onDown={() => { setBreath(true); p.onHoldBreath(true); }} onUp={() => { setBreath(false); p.onHoldBreath(false); }} />
       <RoundButton size={52} style={m(styles.calm)} icon="meditation" active={calm} accent="#c9d6c2" a11y="Calm your breathing" keycap={p.keys?.calm}
         onDown={() => { setCalm(true); p.onCalm(true); }} onUp={() => { setCalm(false); p.onCalm(false); }} />
+      {p.hasMap && (
+        <RoundButton size={52} style={m(styles.map)} icon="map-outline" accent={bone} a11y="Read the map" keycap={p.keys?.map}
+          onDown={() => p.onMap(true)} onUp={() => p.onMap(false)} />
+      )}
     </View>
   );
 }
@@ -133,8 +139,32 @@ function useWebHold(onDown?: () => void, onUp?: () => void) {
   return { node, held, holdable };
 }
 
+const KEY_CODES: Record<string, string[]> = { E: ['KeyE', 'Space'], F: ['KeyF'], R: ['KeyR'], Q: ['KeyQ'], C: ['KeyC'], M: ['KeyM'] };
+
+/** On a computer: is this button's key down right now? So the on-screen button answers the keyboard too. */
+function useKeyDown(keycap?: string) {
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    const codes = keycap ? KEY_CODES[keycap] : undefined;
+    if (!codes) return;
+    const press = (e: KeyboardEvent) => { if (codes.includes(e.code)) setDown(true); };
+    const release = (e: KeyboardEvent) => { if (codes.includes(e.code)) setDown(false); };
+    const clear = () => setDown(false);
+    window.addEventListener('keydown', press);
+    window.addEventListener('keyup', release);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', press);
+      window.removeEventListener('keyup', release);
+      window.removeEventListener('blur', clear);
+    };
+  }, [keycap]);
+  return down;
+}
+
 function RoundButton(b: RoundProps) {
   const { node, held, holdable } = useWebHold(b.onDown, b.onUp);
+  const keyDown = useKeyDown(b.keycap);
   const r = b.size / 2;
   const ring = r - 3;
   const circ = 2 * Math.PI * ring;
@@ -146,6 +176,7 @@ function RoundButton(b: RoundProps) {
         styles.round, b.style, { width: b.size, height: b.size, borderRadius: r },
         b.active && { borderColor: b.accent, backgroundColor: `${b.accent}2e`, shadowColor: b.accent, shadowOpacity: 0.9, shadowRadius: 12 },
         (pressed || held) && { backgroundColor: `${b.accent}55`, transform: [{ scale: 0.94 }] },
+        keyDown && styles.keyDown,
         b.disabled && styles.disabled,
       ]}>
       {b.progress !== undefined && b.progress !== null && (
@@ -180,7 +211,9 @@ const styles = StyleSheet.create({
   match: { right: 90, bottom: 84 },
   phone: { right: 12, bottom: 108 },
   calm: { right: 176, bottom: 6 },
+  map: { right: 168, bottom: 76 },
   disabled: { opacity: 0.35 },
+  keyDown: { borderColor: blood, borderWidth: 3, backgroundColor: `${blood}55`, transform: [{ scale: 0.94 }] },
   label: { color: bone, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 1 },
   hold: { color: 'rgba(228,216,196,0.5)', fontSize: 7.5, letterSpacing: 1.5 },
   meter: { position: 'absolute', bottom: 9, width: 24, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },

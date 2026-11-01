@@ -1,13 +1,15 @@
 // The story an ending tells: passages fade in one at a time (tap to hurry them), then the end screen.
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ENDINGS, type Ending } from '../game/sim/endings';
+import { COLE_ENDING, ENDINGS, type Ending } from '../game/sim/endings';
 import { ash, blood, bone, fonts } from '../theme';
 
 const HOLD = 5200; // ms each passage stays before the next one comes
 
-export function Epilogue({ ending, onDone }: { ending: Ending; onDone(): void }) {
-  return <Passages title={ENDINGS[ending].title} story={ENDINGS[ending].story} closing="tap to close the ledger" onDone={onDone} />;
+export function Epilogue({ ending, cole, onDone }: { ending: Ending; cole?: 'saved' | 'left'; onDone(): void }) {
+  const base = ENDINGS[ending].story;
+  const story = cole ? [...base.slice(0, -1), COLE_ENDING[cole], base[base.length - 1]] : base;
+  return <Passages title={ENDINGS[ending].title} story={story} closing="tap to close the ledger" onDone={onDone} />;
 }
 
 export function Passages({ title, story, closing, onDone }: { title?: string; story: string[]; closing: string; onDone(): void }) {

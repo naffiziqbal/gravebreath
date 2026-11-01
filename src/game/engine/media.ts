@@ -94,6 +94,16 @@ export const SOUNDS = {
   whisper_2: require('../../../assets/game/audio/whisper_2.mp3'),
   drone_loop: require('../../../assets/game/audio/drone_loop.mp3'),
   tension_loop: require('../../../assets/game/audio/tension_loop.mp3'),
+  // Cole (tools/make_cole_voice.py)
+  cole_gate: require('../../../assets/game/audio/cole_gate.mp3'),
+  cole_sorry: require('../../../assets/game/audio/cole_sorry.mp3'),
+  cole_buried: require('../../../assets/game/audio/cole_buried.mp3'),
+  cole_help: require('../../../assets/game/audio/cole_help.mp3'),
+  cole_betray: require('../../../assets/game/audio/cole_betray.mp3'),
+  cole_left: require('../../../assets/game/audio/cole_left.mp3'),
+  // the loading music (tools/make_loading_score.py)
+  loading_bed_loop: require('../../../assets/game/audio/loading_bed_loop.mp3'),
+  loading_rise_loop: require('../../../assets/game/audio/loading_rise_loop.mp3'),
   // stereo copies for direction on headphones (tools/make_sfx.py --experience): __p0 hard left … __p4 hard right
   listener_stomp_0__p0: require('../../../assets/game/audio/listener_stomp_0__p0.mp3'),
   listener_stomp_0__p1: require('../../../assets/game/audio/listener_stomp_0__p1.mp3'),

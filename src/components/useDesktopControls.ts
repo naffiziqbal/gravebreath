@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 import type { Game } from '../game/Game';
 import { useGame } from '../game/store';
 
-export const KEYS = { action: 'E', match: 'F', phone: 'R', breath: 'Q', calm: 'C' } as const;
+export const KEYS = { action: 'E', match: 'F', phone: 'R', breath: 'Q', calm: 'C', map: 'M' } as const;
 
 const MOUSE_SCALE = 0.5; // mouse pixels are finer than a thumb drag
 const WALK = 0.9; // stick magnitude for walking (above 0.92 counts as sprinting)
@@ -41,6 +41,7 @@ export function useDesktopControls(game: RefObject<Game | null>, paused: boolean
         interact: free && (held.has('KeyE') || held.has('Space') || held.has('Mouse0')),
         holdingBreath: free && (held.has('KeyQ') || held.has('Mouse2')),
         calming: free && held.has('KeyC'),
+        reading: free && held.has('KeyM'),
       });
     };
     const press = (code: string) => {

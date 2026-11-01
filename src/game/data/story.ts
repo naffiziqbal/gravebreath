@@ -13,6 +13,16 @@ export const BURIAL_CARDS = [
   'The first spade of earth lands on the lid.',
 ];
 
+/** What Cole says, spoken and subtitled. */
+export const COLE = {
+  gate: 'Cole: "Left of the path, halfway up. Don\'t worry. I\'ll watch the gate."',
+  sorry: 'Cole: "I\'m sorry. They pay by the name."',
+  buried: 'Under the earth: "Is someone there? It\'s me. It\'s Cole. Please. I can\'t breathe."',
+  help: 'Cole: "Take these. They\'re watching the porch. Now go."',
+  betray: 'Cole: "Here! Over here! I found one! I found one for you!"',
+  left: 'Behind you: "Don\'t. Don\'t leave me. Not like I left you."',
+};
+
 export const OBJECTIVES = {
   jobWalk: 'The job · Find the Ashby tomb',
   jobDoor: 'The job · Force the tomb door',

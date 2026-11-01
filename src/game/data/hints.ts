@@ -10,6 +10,7 @@ export const HINTS = {
   calm: 'Your heart is racing and you breathe faster. Stand still and hold the calm button.',
   hushmen: 'The Hushmen see by lantern light. Tall tombs hide you, low ones do not. Your own light gives you away.',
   tombs: 'A lantern is turning your way. Get a tall tomb between you and it.',
+  map: 'Hold the map button to read it. You need a light to see it, and light costs air.',
   surface: 'You can breathe again. The ledger lies open in the church porch.',
 } as const;
 

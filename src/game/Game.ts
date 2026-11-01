@@ -8,13 +8,14 @@ import { buildCoffin, buildCrypt, type Box, type Coffin, type Crypt, type Level,
 import { buildCatacombs, type Catacombs } from './world/catacombs';
 import { buildNecropolis, type Necropolis } from './world/necropolis';
 import { buildSurface, RAIN, type Surface } from './world/surface';
+import { animateCole } from './world/coleRig';
 import { animateHushman } from './world/hushmanRig';
 import { Hands, type PickupKind } from './world/hands';
 import { animateListener } from './world/listenerRig';
 import { generateLayout, type Layout } from './sim/layout';
-import { cellOf, generateCatacombs, neighbours, sightCells, type Cell } from './sim/catacombs';
-import { generateNecropolis, HALL_DEPTH } from './sim/necropolis';
-import { generateSurface } from './sim/surface';
+import { cellOf, generateCatacombs, neighbours, sightCells, type Cell, mapSpot, SCRAP_MAP, scrapMap } from './sim/catacombs';
+import { coleBetrays, generateNecropolis, HALL_DEPTH } from './sim/necropolis';
+import { generateSurface, COLE_AT } from './sim/surface';
 import { endingChoices, type Ending } from './sim/endings';
 import { spawnHushman, stepHushman, type HushmanState } from './sim/hushman';
 import { noiseRadius, spawnListener, stepListener, type ListenerState } from './sim/listener';
@@ -28,7 +29,7 @@ import type { RunSnapshot } from './save';
 import { DIG, PLAYER, RENDER } from './config';
 import type { Hud, RunEnd } from './store';
 import { trace } from './trace';
-import { OBJECTIVES } from './data/story';
+import { COLE, OBJECTIVES } from './data/story';
 import { QUALITY, brightnessGamma, type Quality, type Settings } from './settings';
 
 export type GameEvents = {
@@ -55,7 +56,7 @@ export type StartOptions = { layer?: number; resume?: RunSnapshot; job?: boolean
 
 type Job = 'walk' | 'door' | 'ring' | 'run' | 'caught';
 
-export type Input = { moveX: number; moveY: number; calming: boolean; holdingBreath: boolean; interact: boolean };
+export type Input = { moveX: number; moveY: number; calming: boolean; holdingBreath: boolean; interact: boolean; reading: boolean };
 
 type Phase = 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'surface' | 'over';
 
@@ -90,7 +91,7 @@ export class Game {
   private run: RunState;
   private phase: Phase = 'loading';
   private paused = false;
-  private input: Input = { moveX: 0, moveY: 0, calming: false, holdingBreath: false, interact: false };
+  private input: Input = { moveX: 0, moveY: 0, calming: false, holdingBreath: false, interact: false, reading: false };
   private lookDX = 0;
   private lookDY = 0;
   private yaw = 0;
@@ -147,6 +148,7 @@ export class Game {
   private danger = 0; // 0..1, how close something is to taking you: drives the tension score
   private job: Job | null = null; // the opening robbery, played on the graveyard before the first coffin
   private doorStroke = 0;
+  private coleSpoke = 0; // 1 once he has called to you, 2 once he has begged you not to leave
   private scareTimer = 40; // seconds to the next small scare (a whisper, a knock, a candle going out)
   private caughtLit = false; // was your light on when a Hushman caught you (for the death screen's tip)
 
@@ -431,7 +433,8 @@ export class Game {
     this.renderer.three.compile(s.scene, this.camera);
     this.hushmen = s.layout.routes.map((route, i) => spawnHushman(route, i));
     this.applyQualityToLevels();
-    this.enterLevel(s, 'surface', 'Cole: "Left of the path, halfway up. I\'ll watch the gate."');
+    this.enterLevel(s, 'surface', COLE.gate);
+    this.sound.play('cole_gate', 1);
   }
 
   private updateJob(dt: number) {
@@ -458,7 +461,47 @@ export class Game {
         setTimeout(() => this.events.say(null), 4000);
       }
     }
-    if (this.job === 'run' && this.pos.z > -3) this.captureJob('Cole is at the gate, where he said he\'d be. He isn\'t alone.');
+    if (s.cole) {
+      s.cole.group.rotation.y = Math.atan2(-(this.pos.x - COLE_AT.x), -(this.pos.z - COLE_AT.z)); // he watches you the whole time
+      animateCole(s.cole, this.time, this.flick);
+    }
+    if (this.job === 'run' && this.pos.z > -3) {
+      this.yaw = Math.atan2(-(COLE_AT.x - this.pos.x), -(COLE_AT.z - this.pos.z));
+      this.pitch = 0;
+      this.captureJob('Cole is at the gate, where he said he\'d be. He isn\'t alone.', true);
+    }
+  }
+
+  /** Cole speaks: heard, and subtitled for anyone playing silently. */
+  private speak(name: 'cole_gate' | 'cole_sorry' | 'cole_buried' | 'cole_help' | 'cole_betray' | 'cole_left', line: string, volume = 1, seconds = 5) {
+    this.sound.play(name, volume);
+    this.events.say(line);
+    setTimeout(() => this.events.say(null), seconds * 1000);
+  }
+
+  /** The heap in the necropolis aisle: he calls out when you come near, and again if you walk away from him. */
+  private updateCole() {
+    const it = this.necropolis?.interactables.find((i) => i.def.type === 'survivor' && i.def.cole);
+    if (!it || it.done) return;
+    const d = Math.hypot(it.pos.x - this.pos.x, it.pos.z - this.pos.z);
+    if (this.coleSpoke === 0 && d < 7) { this.coleSpoke = 1; this.speak('cole_buried', COLE.buried, 0.85, 8.5); }
+    else if (this.coleSpoke === 1 && d > 11) { this.coleSpoke = 2; this.speak('cole_left', COLE.left, 0.6, 6.5); }
+  }
+
+  /** You dug him out. Half the time he pays you back; the other half he buys his life with yours, again. */
+  private freeCole() {
+    this.saved += 1;
+    this.sound.play('gasp', 0.8);
+    if (!coleBetrays(this.run.seed)) {
+      this.run = { ...this.run, matches: this.run.matches + 3 };
+      this.speak('cole_help', COLE.help);
+      return;
+    }
+    this.speak('cole_betray', COLE.betray);
+    this.run = scare(this.run, 0.8);
+    this.events.haptic('heavy');
+    const at = { x: this.pos.x, z: this.pos.z };
+    this.hushmen = this.hushmen.map((h) => ({ ...h, mode: 'chase', suspicion: 1, lastSeen: at }));
   }
 
   /** The ring comes off the shelf, the bell starts, and every lantern in the yard turns toward you. */
@@ -477,18 +520,22 @@ export class Game {
     });
   }
 
-  private captureJob(line: string) {
+  private captureJob(line: string, atGate = false) {
     if (this.job === 'caught') return;
     this.job = 'caught';
     this.phase = 'over';
     this.focus = null;
     this.flash = 0.35;
     this.shake = 1;
-    this.fadeTarget = 1;
     this.events.haptic('heavy');
     this.sound.play('hushman_alert', 0.9);
     this.events.say(line);
-    setTimeout(() => { this.events.say(null); this.buryAfterJob(); }, 2600);
+    // at the gate the world holds a moment on his face, and he gets the last word
+    if (atGate) {
+      setTimeout(() => { this.speak('cole_sorry', COLE.sorry); }, 900);
+      setTimeout(() => { this.fadeTarget = 1; }, 2200);
+    } else this.fadeTarget = 1;
+    setTimeout(() => { this.events.say(null); this.buryAfterJob(); }, atGate ? 4600 : 2600);
   }
 
   private async buryAfterJob() {
@@ -622,17 +669,24 @@ export class Game {
     if (!(fate === 'taken' && layer === 3)) this.sound.play(fate === 'escaped' ? 'ghost_swell' : fate === 'taken' ? 'listener_shriek' : 'gasp', 0.9); // the Listener's scream is already playing
     const abandoned = this.crypt.interactables.filter((i) => i.def.type === 'survivor' && !i.done && !(i.def as { trap: boolean }).trap);
     const victim = victimName(this.run.seed);
+    const heap = this.necropolis?.interactables.find((i) => i.def.type === 'survivor' && i.def.cole);
+    const cole = heap ? (heap.done ? 'saved' as const : 'left' as const) : undefined;
     const meta = recordRun(this.meta, { name: victim, year: 1880 + this.meta.victims.length * 3, fate, layer, saved: this.saved, ending },
       this.foundClues, abandoned.map((a) => `${this.run.seed}-${a.roomIndex}`));
     setTimeout(() => {
       this.sound.stopLoops();
-      this.events.end({ fate, victim, layer, newClues: this.foundClues, saved: this.saved, abandoned: abandoned.length, ending, ...deathLesson(fate, layer, this.caughtLit) }, meta);
+      this.events.end({ fate, victim, layer, newClues: this.foundClues, saved: this.saved, abandoned: abandoned.length, ending, cole, ...deathLesson(fate, layer, this.caughtLit) }, meta);
     }, ending === 'bells' ? 5200 : 3200);
   }
 
   // ---------------------------------------------------------------- frame
   private frames = 0;
   private tick(dt: number) {
+    if (this.renderer.syncSize()) {
+      this.camera.aspect = this.renderer.width / this.renderer.height;
+      this.camera.updateProjectionMatrix();
+      this.hands.setAspect(this.camera.aspect);
+    }
     this.frames++;
     if (this.frames === 1 || this.frames === 30 || this.frames === 120) trace(`frame ${this.frames}${this.frames === 120 ? ' ok' : ''}`);
     this.time += dt;
@@ -661,6 +715,7 @@ export class Game {
     if (this.phase === 'necropolis' || this.phase === 'surface') this.updateHushmen(dt);
     if (this.phase === 'surface') this.updateSurface(dt);
     if (this.job) this.updateJob(dt);
+    if (this.phase === 'necropolis') this.updateCole();
     if (this.walking) this.updateScares(dt);
     if (this.phase !== 'catacombs' && !this.watched) this.danger = Math.max(0, this.danger - dt * 0.3);
     if (this.phase === 'catacombs') this.cullBones();
@@ -907,6 +962,7 @@ export class Game {
         if (!clue) return;
         if (!this.foundClues.includes(clue.id)) this.foundClues.push(clue.id);
         this.events.clue(clue);
+        if (clue.id === SCRAP_MAP) this.hint('map');
       };
       it.done = true;
       if (def.item === 'stone') { this.sound.play('page', 0.4); read(); } // you read a gravestone where it stands
@@ -1097,6 +1153,7 @@ export class Game {
   private freeSurvivor(it: LiveInteractable) {
     it.done = true;
     const def = it.def as Extract<LiveInteractable['def'], { type: 'survivor' }>;
+    if (def.cole) { this.freeCole(); return; }
     if (def.trap) {
       this.sound.play('ghost_sting', 1);
       this.run = scare(this.run, 0.8);
@@ -1205,6 +1262,15 @@ export class Game {
     return this.phase === 'loading' || this.phase === 'over' ? null : OBJECTIVES[this.phase];
   }
 
+  private get hasMap() {
+    return this.phase === 'catacombs' && !!this.catacombs?.interactables.some((i) => i.done && i.def.type === 'clue' && i.def.clueId === SCRAP_MAP);
+  }
+
+  /** The charcoal map, for the UI to draw. */
+  scrapMap() {
+    return this.catacombs ? scrapMap(this.run.seed, this.catacombs.layout.maze) : null;
+  }
+
   private pushHud() {
     const r = this.run;
     const f = this.walking ? this.focus : null;
@@ -1215,6 +1281,8 @@ export class Game {
     const progress = this.phase === 'coffin' ? (this.lidProgress > 0 ? this.lidProgress : null) : f && (f.def.type === 'survivor' || tomb) && f.progress > 0 ? f.progress : null;
     const area = this.walking ? this.level?.areas.find((a) => a.contains(this.pos.x, this.pos.z)) : undefined;
     this.events.hud({
+      hasMap: this.hasMap, reading: this.hasMap && this.input.reading ? (r.matchTime > 0 || r.phoneOn ? 'lit' : 'dark') : null,
+      mapYou: this.hasMap && this.input.reading && this.catacombs ? { ...mapSpot(this.catacombs.layout.maze, this.pos.x, this.pos.z), yaw: this.yaw } : null,
       objective: this.objective(), job: !!this.job, phase: this.phase, air: airFraction(r), panic: r.panic, matches: r.matches, matchLit: r.matchTime > 0,
       battery: r.battery, phoneOn: r.phoneOn, prompt, action, holdAction, progress, room: area?.name ?? null,
       noise: this.phase === 'catacombs' || this.watched ? Math.min(1, this.noise / LOUDEST) : null,

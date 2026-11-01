@@ -11,6 +11,7 @@ export const YARD_WIDTH = 30;
 export const YARD_DEPTH = 34;
 export const LECTERN: Point = { x: 0, z: -YARD_DEPTH + 1.5 };
 /** The opening robbery: the Ashby tomb, its door facing the path. */
+export const COLE_AT = { x: 2.3, z: -0.4 };
 export const ASHBY = { x: -4, z: -14, doorX: -2.9 };
 
 export type SurfaceLayout = {

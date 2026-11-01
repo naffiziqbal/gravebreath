@@ -7,6 +7,9 @@ import { clearRun, loadMeta, saveMeta } from './save';
 import { loadSettings, saveSettings, type Settings } from './settings';
 
 export type Hud = {
+  hasMap: boolean; // the scrap map is in your hand
+  reading: 'lit' | 'dark' | null; // holding the map up, with or without a light to see it
+  mapYou: { x: number; y: number; yaw: number } | null; // where you are on the map while reading it
   objective: string | null; // the chapter, and what you are trying to do in it
   job: boolean; // the opening robbery: you can still breathe, so no air bar
   phase: 'loading' | 'coffin' | 'crypt' | 'catacombs' | 'necropolis' | 'surface' | 'over';
@@ -27,7 +30,7 @@ export type Hud = {
   debug: string | null; // dev builds only: render resolution and fps
 };
 
-export type RunEnd = { fate: 'suffocated' | 'escaped' | 'taken'; victim: string; layer: number; newClues: string[]; saved: number; abandoned: number; ending?: Ending;
+export type RunEnd = { fate: 'suffocated' | 'escaped' | 'taken'; victim: string; layer: number; newClues: string[]; saved: number; abandoned: number; ending?: Ending; cole?: 'saved' | 'left';
   cause?: string; tip?: string }; // what got you, and how to survive it next time
 
 type Store = {
@@ -58,7 +61,7 @@ type Store = {
   reset(): void;
 };
 
-const initialHud: Hud = { objective: null, job: false, phase: 'loading', air: 1, panic: 0, matches: 0, matchLit: false, battery: 1, phoneOn: false, prompt: null, action: null, holdAction: false, progress: null, room: null, noise: null, hunted: false, seen: null, debug: null };
+const initialHud: Hud = { hasMap: false, reading: null, mapYou: null, objective: null, job: false, phase: 'loading', air: 1, panic: 0, matches: 0, matchLit: false, battery: 1, phoneOn: false, prompt: null, action: null, holdAction: false, progress: null, room: null, noise: null, hunted: false, seen: null, debug: null };
 
 export const useGame = create<Store>((set) => ({
   hud: initialHud,

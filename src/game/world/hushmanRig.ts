@@ -16,6 +16,21 @@ export type HushmanRig = {
   scan: number;
 };
 
+/** Hang a lantern from a hand by the top of its handle, as a real one hangs, with its light where the flame is. */
+export async function hangLantern(assets: Assets, hand: THREE.Object3D, scale: number): Promise<THREE.PointLight> {
+  const lantern = await assets.model('Lantern_01');
+  lantern.scale.setScalar(scale);
+  lantern.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(lantern);
+  const centre = box.getCenter(new THREE.Vector3());
+  lantern.position.set(-centre.x, -box.max.y + 0.006, -centre.z);
+  hand.add(lantern);
+  const lamp = new THREE.PointLight(0xffa04a, 2.2, 7, 2);
+  lamp.position.set(0, -box.max.y + 0.006 + centre.y, 0);
+  hand.add(lamp);
+  return lamp;
+}
+
 export async function buildHushmanRig(assets: Assets): Promise<HushmanRig> {
   const [data, linen, maskTex] = await Promise.all([assets.skinnedData('hushman'), assets.materialMaps('coffin_linen'), assets.texture(DECALS.mask, true)]);
   const wool = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, normalMap: linen.normalMap, normalScale: new THREE.Vector2(0.6, 0.6) });
@@ -33,13 +48,7 @@ export async function buildHushmanRig(assets: Assets): Promise<HushmanRig> {
   byName.head.add(mask);
 
   // the lantern, hanging from the right hand
-  const lantern = await assets.model('Lantern_01');
-  lantern.scale.setScalar(0.8);
-  lantern.position.set(0, -0.2, 0.0);
-  byName.handR.add(lantern);
-  const lamp = new THREE.PointLight(0xffa04a, 2.2, 7, 2);
-  lamp.position.set(0, -0.12, 0);
-  byName.handR.add(lamp);
+  const lamp = await hangLantern(assets, byName.handR, 0.8);
   const beam = new THREE.SpotLight(0xffb36a, 6, HUSHMAN.sight + 1, HUSHMAN.halfAngle, 0.5, 1.6);
   beam.position.set(0, -0.2, 0);
   group.add(beam, beam.target);

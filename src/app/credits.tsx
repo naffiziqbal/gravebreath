@@ -8,7 +8,8 @@ const SECTIONS: { head: string; lines: string[] }[] = [
   { head: 'Textures, models and the night sky', lines: ['Poly Haven (polyhaven.com), CC0. Thank you to everyone who shares their work there.'] },
   { head: 'Recorded foley', lines: ['Kenney: 50 RPG sound effects (CC0)', 'Fantozzi: Footsteps, grass, sand and stone (CC0)', 'Corsica_S: 42 snow and gravel footsteps (CC0)'] },
   { head: 'Fonts', lines: ['Nosifer and Creepster, by Typomondo and Sideshow (SIL Open Font License)'] },
-  { head: 'Everything else', lines: ['Ambience, voices, the creatures and their sounds, and the town of Vael were made in-house.'] },
+  { head: 'The voice of Cole', lines: ['Kokoro-82M, by hexgrad (Apache 2.0)'] },
+  { head: 'Everything else', lines: ['Ambience, the creatures and their sounds, and the town of Vael were made in-house.'] },
   { head: 'Built with', lines: ['Expo and React Native, three.js'] },
 ];
 

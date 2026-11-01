@@ -69,7 +69,7 @@ export class Assets {
   }
 
   /** A sculpted, skinned mesh: the first-person hand or the Listener (tools/make_hand.py, tools/make_listener.py). */
-  skinnedData(which: 'hand' | 'listener' | 'hushman'): Promise<SkinnedData> {
+  skinnedData(which: 'hand' | 'listener' | 'hushman' | 'cole'): Promise<SkinnedData> {
     let p = this.skinned.get(which);
     if (!p) {
       p = this.counted(this.loadSkinned(which));
@@ -78,11 +78,12 @@ export class Assets {
     return p;
   }
 
-  private async loadSkinned(which: 'hand' | 'listener' | 'hushman'): Promise<SkinnedData> {
+  private async loadSkinned(which: 'hand' | 'listener' | 'hushman' | 'cole'): Promise<SkinnedData> {
     const files = {
       hand: { bin: require('../../../assets/game/hand/hand.bin'), json: require('../../../assets/game/hand/hand.json') },
       listener: { bin: require('../../../assets/game/listener/listener.bin'), json: require('../../../assets/game/listener/listener.json') },
       hushman: { bin: require('../../../assets/game/hushman/hushman.bin'), json: require('../../../assets/game/hushman/hushman.json') },
+      cole: { bin: require('../../../assets/game/cole/cole.bin'), json: require('../../../assets/game/cole/cole.json') },
     }[which];
     const asset = await assetFile(files.bin);
     const buffer = Platform.OS === 'web'

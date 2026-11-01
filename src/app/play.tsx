@@ -77,7 +77,7 @@ export default function Play() {
           <View style={styles.paper}>
             <Text style={styles.clueTitle}>{clue.title}</Text>
             <Text style={styles.clueText}>{clue.text}</Text>
-            <Pressable onPress={() => showClue(null)} style={styles.btn}><Text style={styles.btnText}>Keep it</Text></Pressable>
+            <Pressable onPress={() => showClue(null)} style={({ pressed }) => [styles.btn, styles.keepBtn, pressed && styles.keepPressed]}><Text style={[styles.btnText, styles.keepText]}>Keep it</Text></Pressable>
           </View>
         </View>
       )}
@@ -105,7 +105,7 @@ export default function Play() {
           </View>
         </View>
       )}
-      {end && end.ending && !storyRead && <Epilogue ending={end.ending} onDone={() => setStoryRead(true)} />}
+      {end && end.ending && !storyRead && <Epilogue ending={end.ending} cole={end.cole} onDone={() => setStoryRead(true)} />}
       {end && end.ending && storyRead && (
         <View style={[styles.overlay, styles.endBg]}>
           <Text style={styles.endTitle}>{ENDINGS[end.ending].title}</Text>
@@ -202,6 +202,9 @@ const styles = StyleSheet.create({
   endStats: { marginTop: 8, color: 'rgba(143,133,122,0.8)', fontSize: 12, letterSpacing: 0.5 },
   endButtons: { flexDirection: 'row', gap: 12, marginTop: 26 },
   btn: { paddingVertical: 12, paddingHorizontal: 22, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(163,18,14,0.75)', alignItems: 'center', backgroundColor: 'rgba(20,4,4,0.6)' },
+  keepBtn: { backgroundColor: blood, borderColor: '#5e0a07', opacity: 1 },
+  keepPressed: { backgroundColor: '#7c0d0a' },
+  keepText: { color: '#f4e9d6' },
   secondary: { borderColor: 'rgba(228,216,196,0.25)' },
   choiceRow: { flexDirection: 'row', gap: 16, marginTop: 24 },
   choice: { width: 240, padding: 18, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(163,18,14,0.75)', backgroundColor: 'rgba(20,4,4,0.6)' },
