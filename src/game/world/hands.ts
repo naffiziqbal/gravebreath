@@ -54,11 +54,12 @@ class HandRig {
     this.grip.position.set(-0.04, -0.022, -0.112);
     bones[0].add(this.grip);
     // forearm and a frayed shroud sleeve, on their own joint so the wrist can bend (see aimArm)
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.0235, 0.2, 4, 12), armSkin);
-    arm.scale.set(1, 0.78, 1);
-    arm.rotation.x = Math.PI / 2; arm.position.set(0, 0, 0.11);
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.047, 0.3, 14, 1, true), sleeve);
-    cuff.rotation.x = Math.PI / 2; cuff.position.set(0, 0, 0.21);
+    // long enough to leave the bottom of the view from any pose, thickening toward the elbow; the sleeve starts out of sight
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.0235, 0.04, 0.62, 14), armSkin);
+    arm.scale.set(1, 1, 0.8);
+    arm.rotation.x = Math.PI / 2; arm.position.set(0, 0, 0.3);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.06, 0.36, 14, 1, true), sleeve);
+    cuff.rotation.x = Math.PI / 2; cuff.position.set(0, 0, 0.42);
     this.forearm.add(arm, cuff);
     wrist.add(this.forearm);
   }
@@ -70,7 +71,7 @@ class HandRig {
   private aimArm() {
     this.root.updateMatrixWorld(true);
     const p = this.cur.pos;
-    const dir = new THREE.Vector3(p.x * 0.6, -0.75 - p.y, 0.9).normalize(); // toward the bottom edge of the view
+    const dir = new THREE.Vector3(p.x * 0.45, -1, 0.55).normalize(); // down and out through the bottom edge of the view, never past the lens
     // into the hand's own frame (undoing its rotation, and the mirror for the left hand)
     const inv = new THREE.Quaternion();
     this.root.getWorldQuaternion(inv).invert();
@@ -147,7 +148,7 @@ export class Hands {
     // flesh, with grime painted into the creases and nails (vertex colours) and only a faint pore/dirt relief
     const skinOpts = { color: 0xc08f78, roughness: 0.62, normalMap: dirt.normalMap, normalScale: new THREE.Vector2(0.18, 0.18) };
     const skin = new THREE.MeshStandardMaterial({ ...skinOpts, vertexColors: true });
-    const armSkin = new THREE.MeshStandardMaterial({ ...skinOpts, color: 0xb88a74 });
+    const armSkin = new THREE.MeshStandardMaterial({ ...skinOpts, color: 0xa87c68 });
     const sleeve = materialFrom(linen, 2, 2, { tint: 0x6f665c });
     sleeve.side = THREE.DoubleSide;
     this.right = new HandRig(hand, skin, armSkin, sleeve, false);

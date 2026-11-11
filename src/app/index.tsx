@@ -55,7 +55,7 @@ export default function Title() {
           )}
           {meta.runs > 0 && (
             <Pressable onPress={() => router.push('/ledger')} style={({ pressed }) => [styles.btn, btn, styles.secondary, pressed && styles.pressed]}>
-              <Text style={[styles.btnText, btnText]}>The ledger · {meta.victims.length} names</Text>
+              <Text style={[styles.btnText, btnText]}>The ledger · {meta.victims.length} {meta.victims.length === 1 ? 'name' : 'names'}</Text>
             </Pressable>
           )}
         </View>

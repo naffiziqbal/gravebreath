@@ -95,6 +95,11 @@ dist = np.full((len(verts), len(names)), np.inf)
 for n, a, b, r in SEG:
     d, _ = capsule(verts, a, b, r, r)
     dist[:, index[n]] = np.minimum(dist[:, index[n]], np.maximum(d, 0))
+# the robe never follows the arms, or lifting one would drag the cloth up with it; only the sleeves themselves do
+t_ = np.clip((1.48 - verts[:, 1]) / 1.48, 0, 1)
+on_robe = (np.sqrt(verts[:, 0] ** 2 + (verts[:, 2] * 1.15) ** 2) - (0.17 + 0.25 * t_ ** 1.2) < 0.022) & (verts[:, 1] < 1.34)
+for n in ("upperArmL", "upperArmR", "forearmL", "forearmR", "handL", "handR"):
+    dist[on_robe, index[n]] = np.inf
 w = np.exp(-(dist / 0.05) ** 2)
 w[np.arange(len(verts)), np.argmin(dist, axis=1)] += 1e-6
 idx = np.argsort(-w, axis=1)[:, :4]

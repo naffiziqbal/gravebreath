@@ -115,10 +115,10 @@ def surface(f, lo, hi, step):
     return v + lo, t
 
 # fine where it is looked at (the face and cap, the hands), coarser everywhere else; the pieces overlap inside the scarf and cuffs
-parts = [surface(body_field, V(-0.45, -0.01, -0.45), V(0.45, 1.56, 0.38), 0.0105),
-         surface(fine_field, V(-0.13, 1.46, -0.17), V(0.13, 1.79, 0.13), 0.0048),
-         surface(hands_field, V(-0.38, 0.92, -0.42), V(-0.22, 1.1, -0.2), 0.0048),
-         surface(hands_field, V(0.25, 0.68, -0.12), V(0.36, 0.92, 0.05), 0.0055)]
+parts = [surface(body_field, V(-0.45, -0.01, -0.45), V(0.45, 1.56, 0.38), 0.0135),
+         surface(fine_field, V(-0.13, 1.46, -0.17), V(0.13, 1.79, 0.13), 0.0058),
+         surface(hands_field, V(-0.38, 0.92, -0.42), V(-0.22, 1.1, -0.2), 0.006),
+         surface(hands_field, V(0.25, 0.68, -0.12), V(0.36, 0.92, 0.05), 0.007)]
 verts, faces, n0 = [], [], 0
 for v, t in parts:
     verts.append(v); faces.append(t + n0); n0 += len(v)

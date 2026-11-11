@@ -29,7 +29,7 @@ export async function buildSurface(assets: Assets, layout: SurfaceLayout): Promi
     assets.texture(DECALS.sky, true), assets.texture(DECALS.fog, true),
   ]);
   // the big models at once rather than one after another (the awaits below then find them ready)
-  await Promise.all([assets.model('dead_tree_trunk'), assets.model('large_castle_door'), assets.model('brass_candleholders'), assets.model('Lantern_01')]);
+  await Promise.all([assets.model('dead_tree_trunk'), assets.model('large_castle_door'), assets.model('Lantern_01')]);
   const colliders: Box[] = [];
   const lit: LitPoint[] = [];
   const interactables: LiveInteractable[] = [];
@@ -189,9 +189,11 @@ export async function buildSurface(assets: Assets, layout: SurfaceLayout): Promi
   const ink = new THREE.Mesh(new THREE.PlaneGeometry(0.02, 0.36), new THREE.MeshBasicMaterial({ color: 0x1a0d08 }));
   ink.position.set(LECTERN.x, 1.21, LECTERN.z - 0.135); ink.rotation.x = -Math.PI / 2 + 0.35; scene.add(ink); // the spine
   box(LECTERN.x - 0.32, LECTERN.x + 0.32, LECTERN.z - 0.4, LECTERN.z + 0.05);
-  const candle = await assets.model('brass_candleholders');
-  fitFootprint(candle, 0.3);
-  candle.position.x += LECTERN.x + 0.55; candle.position.z += LECTERN.z - 0.2; scene.add(candle);
+  if (!layout.job) { // on the job you never get near the porch, so don't download its candles for it
+    const candle = await assets.model('brass_candleholders');
+    fitFootprint(candle, 0.3);
+    candle.position.x += LECTERN.x + 0.55; candle.position.z += LECTERN.z - 0.2; scene.add(candle);
+  }
   lit.push({ pos: new THREE.Vector3(LECTERN.x + 0.5, 1.5, LECTERN.z), color: 0xff9447, intensity: 1.1, flicker: true });
 
   // ground mist drifting between the stones

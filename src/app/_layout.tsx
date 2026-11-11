@@ -4,7 +4,11 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Alert, Platform, View } from 'react-native';
+import { inject } from '@vercel/analytics';
 import { MenuAmbience } from '../components/MenuAmbience';
+
+// Vercel Web Analytics for the browser build (gravebreath.vercel.app). Native builds skip it.
+if (Platform.OS === 'web' && typeof window !== 'undefined') inject({ framework: 'expo' });
 
 // Test builds only for now: show a JavaScript crash instead of closing silently, so it can be read off the phone.
 // Remove before the store release.

@@ -177,7 +177,7 @@ function clampLen(x: number, y: number): [number, number] {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   stickBase: { position: 'absolute', width: STICK_RADIUS * 2, height: STICK_RADIUS * 2, borderRadius: STICK_RADIUS, borderWidth: 1.5, borderColor: 'rgba(220,210,200,0.18)' },
-  clickToLook: { position: 'absolute', left: 0, right: 0, top: '38%', alignItems: 'center' },
+  clickToLook: { position: 'absolute', left: 0, right: 0, top: '20%', alignItems: 'center' }, // above the action prompt
   clickTitle: { fontFamily: fonts.creepster, fontSize: 30, color: bone, textShadowColor: '#000', textShadowRadius: 8 },
   clickKeys: { marginTop: 10, color: ash, fontSize: 13, lineHeight: 22, textAlign: 'center', letterSpacing: 0.5, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   stickRest: { bottom: 30, alignItems: 'center', justifyContent: 'center' },
